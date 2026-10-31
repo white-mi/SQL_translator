@@ -70,9 +70,10 @@ cp stand/.env.example stand/.env && nano stand/.env
 bash stand/bootstrap.sh         # стенд, данные, эталоны на Trino, self-check, baseline, тесты
 ```
 
-Public и private генерирует оператор с секретными сидами из `operator/seeds.json`:
+Public и private генерирует оператор с секретными сидами из `operator/seeds.json` (каталог вне git):
 
 ```bash
+mkdir -p operator && python -c "import json, secrets; print(json.dumps({'public': secrets.randbits(62), 'private': secrets.randbits(62), 'secret': secrets.token_hex(16)}))" > operator/seeds.json
 python -m sqltr build-dataset --split public  --families 100 --seed-file operator/seeds.json --exclude data/train/instances.jsonl --out operator/public
 python -m sqltr build-dataset --split private --families 100 --seed-file operator/seeds.json --exclude data/train/instances.jsonl operator/public/instances.jsonl --out operator/private
 ```
