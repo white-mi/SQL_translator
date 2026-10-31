@@ -199,7 +199,7 @@
     "sql_error": 200,
     "target_dialect_gate": 21
   },
-  "solver_seconds_mean": 0.736,
-  "metric_seconds_mean": 0.058,
-  "wall_seconds": 33.2
+  "solver_seconds_mean": 0.646,
+  "metric_seconds_mean": 0.055,
+  "wall_seconds": 29.3
 }

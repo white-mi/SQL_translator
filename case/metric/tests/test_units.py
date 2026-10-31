@@ -109,3 +109,27 @@ def test_table_hash_ignores_row_and_column_order():
 
 def test_table_hash_is_a_multiset():
     assert table_hash(["a"], [(1,), (1,)]) != table_hash(["a"], [(1,)])
+
+
+# ------------------------------------------------------------------ Trino error classification
+
+def test_trino_error_classification():
+    import trino.exceptions as exc
+
+    from sqltr_metric.engines import TrinoEngine
+
+    engine = object.__new__(TrinoEngine)
+    engine._exc = exc
+
+    def err(name, etype):
+        return exc.TrinoQueryError({"errorName": name, "errorType": etype, "message": name})
+
+    assert engine._classify(err("SYNTAX_ERROR", "USER_ERROR")) == "sql_error"
+    assert engine._classify(err("FUNCTION_NOT_FOUND", "USER_ERROR")) == "sql_error"
+    assert engine._classify(err("PERMISSION_DENIED", "USER_ERROR")) == "permission"
+    assert engine._classify(err("EXCEEDED_TIME_LIMIT", "INSUFFICIENT_RESOURCES")) == "timeout"
+    assert engine._classify(err("EXCEEDED_LOCAL_MEMORY_LIMIT", "INSUFFICIENT_RESOURCES")) == "timeout"
+    assert engine._classify(err("NO_NODES_AVAILABLE", "INTERNAL_ERROR")) == "infra"
+    assert engine._classify(err("CATALOG_UNAVAILABLE", "USER_ERROR")) == "infra"
+    assert engine._classify(err("GENERIC_INTERNAL_ERROR", "INTERNAL_ERROR")) == "infra"
+    assert engine._classify(err("ICEBERG_FILESYSTEM_ERROR", "EXTERNAL")) == "infra"

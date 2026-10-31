@@ -187,28 +187,48 @@ class TrinoEngine:
             self._admin_exec(f"CREATE SCHEMA {self.cfg.trino.catalog}.{self._q(name)}")
 
     def drop_schemas(self, names: list[str]) -> None:
+        """Drop tables and views created by a script, then the schema. Never raises on cleanup."""
         cat = self.cfg.trino.catalog
         for name in names:
             try:
-                _, tables = self._admin_exec(f"SHOW TABLES FROM {cat}.{self._q(name)}")
-            except self._exc.TrinoUserError:
-                continue
-            for (table,) in tables:
-                self._admin_exec(f"DROP TABLE IF EXISTS {cat}.{self._q(name)}.{self._q(table)}")
-            self._admin_exec(f"DROP SCHEMA IF EXISTS {cat}.{self._q(name)}")
+                _, objects = self._admin_exec(
+                    f"SELECT table_name, table_type FROM {cat}.information_schema.tables "
+                    f"WHERE table_schema = '{name}'")
+            except self._exc.TrinoQueryError:
+                objects = []
+            for table, kind in objects:
+                verb = "VIEW" if str(kind).upper() == "VIEW" else "TABLE"
+                try:
+                    self._admin_exec(f"DROP {verb} IF EXISTS {cat}.{self._q(name)}.{self._q(table)}")
+                except self._exc.TrinoQueryError:
+                    pass
+            try:
+                self._admin_exec(f"DROP SCHEMA IF EXISTS {cat}.{self._q(name)}")
+            except self._exc.TrinoQueryError:
+                pass  # left for the periodic cleanup; it never affects other runs (unique names)
+
+    # error names from io.trino.spi.StandardErrorCode
+    _INFRA = {"SERVER_STARTING_UP", "SERVER_SHUTTING_DOWN", "NO_NODES_AVAILABLE", "REMOTE_TASK_ERROR",
+              "REMOTE_HOST_GONE", "PAGE_TRANSPORT_ERROR", "PAGE_TRANSPORT_TIMEOUT", "TOO_MANY_REQUESTS_FAILED",
+              "CATALOG_NOT_AVAILABLE", "CATALOG_STORE_ERROR", "CATALOG_UNAVAILABLE", "OUT_OF_SPILL_SPACE",
+              "ABANDONED_QUERY", "CLUSTER_OUT_OF_MEMORY", "QUERY_QUEUE_FULL", "REMOTE_TASK_MISMATCH",
+              "SERVER_SHUTTING_DOWN", "GENERIC_INSUFFICIENT_RESOURCES"}
+    _LIMITS = {"EXCEEDED_TIME_LIMIT", "EXCEEDED_CPU_LIMIT", "EXCEEDED_LOCAL_MEMORY_LIMIT",
+               "EXCEEDED_GLOBAL_MEMORY_LIMIT", "EXCEEDED_SCAN_LIMIT", "EXCEEDED_WRITE_LIMIT",
+               "EXCEEDED_SPILL_LIMIT", "ADMINISTRATIVELY_KILLED", "USER_CANCELED"}
 
     def _classify(self, error) -> str:
-        exc = self._exc
+        """Translation fault (score 0) vs infrastructure failure (raise). Names first, then type."""
         name = getattr(error, "error_name", "") or ""
         etype = getattr(error, "error_type", "") or ""
-        if name in ("PERMISSION_DENIED",):
+        if name in self._INFRA:
+            return "infra"
+        if name == "PERMISSION_DENIED":
             return "permission"
-        if name in ("EXCEEDED_TIME_LIMIT", "ADMINISTRATIVELY_KILLED", "USER_CANCELED"):
-            return "timeout"
-        if isinstance(error, exc.TrinoUserError) or etype == "USER_ERROR":
+        if name in self._LIMITS:
+            return "timeout"  # resource limits hit by the script itself (runaway joins, long queries)
+        if etype == "USER_ERROR" or isinstance(error, self._exc.TrinoUserError):
             return "sql_error"
-        if etype == "INTERNAL_ERROR":
-            return "sql_error"  # deterministic engine bug triggered by the script
         return "infra"
 
     def execute(self, script: str, default_schema: str, deadline: float) -> ExecOutcome:
@@ -238,7 +258,8 @@ class TrinoEngine:
                         raise InfraError(f"trino failure: {_short(error)}") from error
                     return ExecOutcome(False, kind, _short(getattr(error, "message", error)), idx,
                                        len(statements), time.monotonic() - started)
-                except (self._exc.TrinoConnectionError, self._exc.HttpError, OSError) as error:
+                except (self._exc.TrinoConnectionError, self._exc.HttpError, self._exc.OperationalError,
+                        OSError) as error:
                     if time.monotonic() > deadline:
                         return ExecOutcome(False, "timeout", "example time limit exceeded", idx,
                                            len(statements), time.monotonic() - started)

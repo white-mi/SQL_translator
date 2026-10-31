@@ -27,11 +27,21 @@ services:
     networks: [sqltr]
     restart: unless-stopped
 
+  # the trino image runs as uid 1000; a fresh named volume is root-owned, so Iceberg writes would fail
+  warehouse-init:
+    image: busybox:1.36.1
+    command: ["sh", "-c", "mkdir -p /data/warehouse/iceberg && chown -R 1000:1000 /data/warehouse"]
+    volumes:
+      - warehouse:/data/warehouse
+    restart: "no"
+
   trino:
     image: trinodb/trino:483
     depends_on:
       postgres:
         condition: service_healthy
+      warehouse-init:
+        condition: service_completed_successfully
     environment:
       SQLTR_PG_ADMIN_PASSWORD: ${SQLTR_PG_ADMIN_PASSWORD}
     volumes:

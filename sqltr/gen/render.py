@@ -129,14 +129,22 @@ class R:
         return f"date_diff('minute', {t1}, {t2})"
 
     def years_between(self, d1: str, d2: str) -> str:
+        """Full years as PostgreSQL age() counts them. Trino date_diff('year') balances leap days
+        differently (2024-02-29 -> 2025-02-28 is 1 there, 0 in PostgreSQL), so it is spelled out."""
         self.f("age")
-        return f"date_part('year', age({d2}, {d1}))" if self.gp else f"date_diff('year', {d1}, {d2})"
+        if self.gp:
+            return f"date_part('year', age({d2}, {d1}))"
+        return (f"(year({d2}) - year({d1}) - if(month({d2}) * 100 + day({d2}) < "
+                f"month({d1}) * 100 + day({d1}), 1, 0))")
 
     def months_between(self, d1: str, d2: str) -> str:
+        """Full months as PostgreSQL age() counts them (valid for d2 >= d1). Trino date_diff('month')
+        clamps month ends (2026-03-31 -> 2026-04-30 is 1 there, 0 in PostgreSQL)."""
         self.f("age")
         if self.gp:
             return f"(date_part('year', age({d2}, {d1})) * 12 + date_part('month', age({d2}, {d1})))"
-        return f"date_diff('month', {d1}, {d2})"
+        return (f"((year({d2}) - year({d1})) * 12 + month({d2}) - month({d1}) - "
+                f"if(day({d2}) < day({d1}), 1, 0))")
 
     def dow(self, dexpr: str) -> str:
         self.f("dow")
@@ -186,11 +194,13 @@ class R:
         if self.gp:
             dist = "DISTINCT " if distinct else ""
             return f"string_agg({dist}{col}, '{sep}' ORDER BY {order})"
+        # FILTER keeps the all-NULL group NULL, as string_agg does (array_join would give '')
+        nonnull = f"FILTER (WHERE {col} IS NOT NULL)"
         if distinct:
-            return f"array_join(array_sort(array_distinct(array_agg({col}))), '{sep}')"
+            return f"array_join(array_sort(array_distinct(array_agg({col}) {nonnull})), '{sep}')"
         if self.st["trino_agg"] == "listagg":
-            return f"listagg({col}, '{sep}') WITHIN GROUP (ORDER BY {order})"
-        return f"array_join(array_agg({col} ORDER BY {order}), '{sep}')"
+            return f"listagg({col}, '{sep}') WITHIN GROUP (ORDER BY {order}) {nonnull}"
+        return f"array_join(array_agg({col} ORDER BY {order}) {nonnull}, '{sep}')"
 
     def left(self, s: str, n: int) -> str:
         self.f("substr")
@@ -198,7 +208,8 @@ class R:
 
     def right(self, s: str, n: int) -> str:
         self.f("substr")
-        return f"right({s}, {n})" if self.gp else f"substr({s}, -{n})"
+        # substr(s, -n) is '' for strings shorter than n; right() returns the whole string
+        return f"right({s}, {n})" if self.gp else f"substr({s}, greatest(length({s}) - {n} + 1, 1))"
 
     def md5hex(self, s: str) -> str:
         self.f("md5")
@@ -226,7 +237,9 @@ class R:
     # -------------------------------------------------------------- arrays from comma lists
     def tag_count(self, col: str) -> str:
         self.f("arrays")
-        return f"array_length(string_to_array({col}, ','), 1)" if self.gp else f"cardinality(split({col}, ','))"
+        if self.gp:
+            return f"array_length(string_to_array({col}, ','), 1)"
+        return f"if({col} = '', NULL, cardinality(split({col}, ',')))"  # '' is an empty array in PostgreSQL
 
     def tags_upper(self, col: str) -> str:
         self.f("lambda")

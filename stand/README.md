@@ -19,4 +19,5 @@ Ubuntu 24.04, 8 vCPU, 32 ГБ RAM, 100 ГБ SSD (минимум 4 vCPU и 16 Г�
 
 ## Если Trino не стартует
 - Ошибка JDBC-каталога (нет драйвера или таблиц каталога): проверить, что `stand/init/01-iceberg-catalog.sql` выполнился (`docker compose logs postgres`). Init-скрипты выполняются только на пустом volume: `docker compose down -v` и снова `up`.
-- Нет поддержки локального хранилища: заменить его на MinIO (свойства `fs.native-s3.enabled`, `s3.*`) - вариант описан в ADR 0004.
+- Ошибка записи в хранилище: проверить, что сервис `warehouse-init` завершился успешно (`docker compose ps -a`), он отдает том пользователю Trino.
+- Каталог не грузится из-за `local.location`: значение должно быть обычным путем `/data/warehouse`, без `local://`.
