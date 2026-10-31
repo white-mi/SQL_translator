@@ -1,0 +1,25 @@
+[project]
+name = "sqltr"
+version = "0.1.0"
+description = "SQL script translation between PostgreSQL/Greenplum and Trino, grown on the DeepPavlov arena"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlglot==30.27.0",
+    "psycopg[binary]==3.3.6",
+    "trino==0.340.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools]
+packages = ["sqltr", "sqltr.gen", "sqltr_metric"]
+
+[tool.setuptools.package-dir]
+sqltr = "sqltr"
+"sqltr.gen" = "sqltr/gen"
+sqltr_metric = "case/metric/sqltr_metric"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "case/metric/tests"]
+pythonpath = [".", "case/metric"]

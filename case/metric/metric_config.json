@@ -1,0 +1,10 @@
+{
+  "states": ["s1", "s2", "s3", "s4"],
+  "source_schema": "retail",
+  "writable_schemas": ["wrk", "sandbox"],
+  "statement_timeout_s": 30,
+  "example_timeout_s": 240,
+  "cache": true,
+  "postgres": {"host": "postgres", "port": 5432, "dbname": "sqltr", "admin_user": "sqltr_admin", "runner_user": "sqltr_runner"},
+  "trino": {"host": "trino", "port": 8080, "catalog": "iceberg", "admin_user": "sqltr_admin", "runner_user": "sqltr_runner"}
+}

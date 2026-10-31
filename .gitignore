@@ -1,0 +1,22 @@
+# secrets and local configuration
+.env
+*.key
+stand/.env
+
+# operator-only material: public/private seeds, generated held-out splits, private references
+operator/
+data/public/
+data/private/
+
+# generated train data is reproducible from the generator; keep it out of git by default
+data/train/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# raw run logs (summaries in results/ are committed)
+results/**/raw/

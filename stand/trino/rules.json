@@ -1,0 +1,18 @@
+{
+  "catalogs": [
+    {"user": "sqltr_admin", "allow": "all"},
+    {"user": "sqltr_runner", "catalog": "iceberg", "allow": "all"},
+    {"allow": "none"}
+  ],
+  "schemas": [
+    {"user": "sqltr_admin", "owner": true},
+    {"user": "sqltr_runner", "catalog": "iceberg", "schema": "(wrk|sandbox)_[a-z0-9_]+", "owner": true},
+    {"user": "sqltr_runner", "catalog": "iceberg", "schema": "retail_s[0-9]+", "owner": false}
+  ],
+  "tables": [
+    {"user": "sqltr_admin", "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP"]},
+    {"user": "sqltr_runner", "catalog": "iceberg", "schema": "(wrk|sandbox)_[a-z0-9_]+",
+     "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP"]},
+    {"user": "sqltr_runner", "catalog": "iceberg", "schema": "retail_s[0-9]+", "privileges": ["SELECT"]}
+  ]
+}

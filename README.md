@@ -1,0 +1,86 @@
+# SQLTR: перевод SQL-скриптов между диалектами, навык, выращенный на арене
+
+Задание B курса Agentic LLM Systems (ИТМО × DeepPavlov, осень 2026). Тема: своя, согласована.
+
+Решатель переводит многошаговый SQL-скрипт между диалектами PostgreSQL/Greenplum и Trino на Iceberg, в обе стороны. Перевод засчитывается, если на целевом движке он дает те же выходные таблицы, что исходный скрипт на исходном движке, на каждом из четырех состояний данных. Метрика программная, без LLM. Решение выращивается эволюцией на арене DeepPavlov поверх baseline на SQLGlot.
+
+## Итог в одной таблице
+
+| | Train | Public | Private |
+|---|---|---|---|
+| Baseline (SQLGlot), trino2gp | 0.116 | после ЧП1 | после кампании |
+| Baseline (SQLGlot), gp2trino | ≤ 0.024 (офлайн-оценка) | после ЧП1 | после кампании |
+| Выращенное решение | - | - | - |
+
+Лимит предложенных решений: ориентир 50, уточняется по замеру на ЧП1. Кандидатов в журнале: 0. AUC: -.
+
+Train-цифры получены локально на PostgreSQL. Для gp2trino нужен Trino, поэтому пока дана верхняя граница: доля переводов, в которых не осталось конструкций Greenplum. Точные цифры по обоим направлениям считает `stand/bootstrap.sh` на VM.
+
+## Как устроено
+
+```mermaid
+flowchart LR
+    G[Генератор: 14 шаблонов,<br/>парные рендеры GP и Trino] --> I[instances.jsonl<br/>семейства, split]
+    W[Синтетическое хранилище<br/>4 состояния данных] --> E[(PostgreSQL 16<br/>Trino + Iceberg)]
+    I --> R[Эталоны: исходный скрипт<br/>на исходном движке]
+    E --> R
+    R --> D[dataset.jsonl<br/>формат арены]
+    D --> A[Арена: исследователи<br/>улучшают решатель]
+    S[Решатель: SQLGlot +<br/>правила + LLM-фоллбэк] --> A
+    M[Метрика: перевод на целевом<br/>движке, сравнение хешей таблиц] --> A
+    E --> M
+```
+
+## Структура
+
+```
+case/                  кейс арены
+  metric/              пакет метрики: metric.json, score.py, sqltr_metric/, тесты
+  dataset/             описание данных и split, generate.py
+  campaign/            условия кампании (черновик до замера на ЧП1)
+  ways/baseline/       стартовый кандидат: SQLGlot, контракт runner арены
+sqltr/                 генератор, хранилище, эталоны, локальный раннер (python -m sqltr)
+stand/                 docker compose: PostgreSQL 16 + Trino 483/Iceberg, скрипты для VM
+docs/                  domain.md, arena.md, adr/, evolution.md, solution.md, talk.md
+skill/                 итоговый навык (после кампании)
+results/               сводки замеров; сырые логи в results/**/raw (вне git)
+operator/              сиды и данные public/private (вне git, только у оператора)
+```
+
+## Как воспроизвести
+
+Локально (нужен только PostgreSQL; Trino-часть пропускается):
+
+```bash
+pip install -e . pytest
+export SQLTR_PG_HOST=127.0.0.1                      # sqltr_admin - владелец базы sqltr
+python -m sqltr --local setup-pg
+python -m sqltr --local load-states --engine postgres
+python -m pytest -q                                   # 25 тестов метрики, включая жульнические решения
+python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
+python -m sqltr --local build-references --split-dir data/train
+python -m sqltr --local run-local --split-dir data/train --directions trino2gp --no-cache --out results/baseline/train-trino2gp
+```
+
+На VM (полный стенд, оба направления):
+
+```bash
+bash stand/vm-setup.sh          # один раз: Docker, uv
+cp stand/.env.example stand/.env && nano stand/.env
+bash stand/bootstrap.sh         # стенд, данные, эталоны на Trino, self-check, baseline, тесты
+```
+
+Public и private генерирует оператор с секретными сидами из `operator/seeds.json`:
+
+```bash
+python -m sqltr build-dataset --split public  --families 100 --seed-file operator/seeds.json --exclude data/train/instances.jsonl --out operator/public
+python -m sqltr build-dataset --split private --families 100 --seed-file operator/seeds.json --exclude data/train/instances.jsonl operator/public/instances.jsonl --out operator/private
+```
+
+## Модели
+
+Исследователи арены и LLM-фоллбэк решателя: Claude Haiku 5.5, уровень усилия Max. Индекс Artificial Analysis - 36, у DeepSeek V4.1 Flash 1017 - 32 (проверено 31.10.2026), поэтому правило курса 0-1 выполнено. Основная кампания идет с решателем без модели; LLM-харнес подключается после приемки gateway. Подробности в [ADR 0007](docs/adr/0007-models.md).
+
+## Арена
+
+Арена закреплена по SHA-256 архива `18519eee87328febd8f3f7ea772705bdf2400fbd4610ff9cb05adcc3a8c8a687`, код арены в репозиторий не копируется ([ADR 0001](docs/adr/0001-arena-pin.md)). Как мы понимаем арену и как кейс ложится на ее контракт - в [docs/arena.md](docs/arena.md).

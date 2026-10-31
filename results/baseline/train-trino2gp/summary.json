@@ -1,0 +1,205 @@
+{
+  "examples": 250,
+  "score": 0.116,
+  "by_direction": {
+    "trino2gp": {
+      "n": 250,
+      "score": 0.116
+    }
+  },
+  "by_template": {
+    "trino2gp/calendar": {
+      "n": 12,
+      "score": 0.0
+    },
+    "trino2gp/category_monthly": {
+      "n": 25,
+      "score": 0.04
+    },
+    "trino2gp/cohorts": {
+      "n": 18,
+      "score": 0.3333
+    },
+    "trino2gp/contacts": {
+      "n": 8,
+      "score": 0.0
+    },
+    "trino2gp/daily_sales": {
+      "n": 21,
+      "score": 0.2381
+    },
+    "trino2gp/fact": {
+      "n": 16,
+      "score": 0.0
+    },
+    "trino2gp/last_order": {
+      "n": 18,
+      "score": 0.3889
+    },
+    "trino2gp/loyalty": {
+      "n": 13,
+      "score": 0.0
+    },
+    "trino2gp/payments": {
+      "n": 26,
+      "score": 0.1538
+    },
+    "trino2gp/promo": {
+      "n": 21,
+      "score": 0.0
+    },
+    "trino2gp/rfm": {
+      "n": 26,
+      "score": 0.0
+    },
+    "trino2gp/stock_alerts": {
+      "n": 21,
+      "score": 0.0
+    },
+    "trino2gp/store_rank": {
+      "n": 10,
+      "score": 0.6
+    },
+    "trino2gp/tags": {
+      "n": 15,
+      "score": 0.0
+    }
+  },
+  "by_feature": {
+    "trino2gp/age": {
+      "n": 38,
+      "score": 0.1579
+    },
+    "trino2gp/arrays": {
+      "n": 11,
+      "score": 0.0
+    },
+    "trino2gp/concat_null": {
+      "n": 13,
+      "score": 0.2308
+    },
+    "trino2gp/concat_types": {
+      "n": 19,
+      "score": 0.1579
+    },
+    "trino2gp/date_arith": {
+      "n": 105,
+      "score": 0.0952
+    },
+    "trino2gp/date_cast": {
+      "n": 93,
+      "score": 0.1183
+    },
+    "trino2gp/date_diff": {
+      "n": 26,
+      "score": 0.0
+    },
+    "trino2gp/date_format": {
+      "n": 25,
+      "score": 0.04
+    },
+    "trino2gp/date_trunc": {
+      "n": 52,
+      "score": 0.1346
+    },
+    "trino2gp/delete_join": {
+      "n": 19,
+      "score": 0.1053
+    },
+    "trino2gp/distinct_on": {
+      "n": 18,
+      "score": 0.3889
+    },
+    "trino2gp/division": {
+      "n": 21,
+      "score": 0.0
+    },
+    "trino2gp/dow": {
+      "n": 12,
+      "score": 0.0
+    },
+    "trino2gp/epoch": {
+      "n": 26,
+      "score": 0.1538
+    },
+    "trino2gp/generate_series": {
+      "n": 12,
+      "score": 0.0
+    },
+    "trino2gp/gp_distribution": {
+      "n": 197,
+      "score": 0.1218
+    },
+    "trino2gp/gp_storage": {
+      "n": 166,
+      "score": 0.0843
+    },
+    "trino2gp/iceberg_props": {
+      "n": 125,
+      "score": 0.0
+    },
+    "trino2gp/if": {
+      "n": 13,
+      "score": 0.0
+    },
+    "trino2gp/ilike": {
+      "n": 45,
+      "score": 0.1556
+    },
+    "trino2gp/json": {
+      "n": 32,
+      "score": 0.0
+    },
+    "trino2gp/lambda": {
+      "n": 11,
+      "score": 0.0
+    },
+    "trino2gp/md5": {
+      "n": 34,
+      "score": 0.0
+    },
+    "trino2gp/null_order": {
+      "n": 6,
+      "score": 0.6667
+    },
+    "trino2gp/partition_ddl": {
+      "n": 16,
+      "score": 0.0
+    },
+    "trino2gp/regex": {
+      "n": 29,
+      "score": 0.0
+    },
+    "trino2gp/string_agg": {
+      "n": 27,
+      "score": 0.0
+    },
+    "trino2gp/substr": {
+      "n": 11,
+      "score": 0.0
+    },
+    "trino2gp/temp_table": {
+      "n": 40,
+      "score": 0.05
+    },
+    "trino2gp/try_cast": {
+      "n": 13,
+      "score": 0.0
+    },
+    "trino2gp/unnest": {
+      "n": 15,
+      "score": 0.0
+    },
+    "trino2gp/update_join": {
+      "n": 21,
+      "score": 0.0
+    }
+  },
+  "failures": {
+    "sql_error": 200,
+    "target_dialect_gate": 21
+  },
+  "solver_seconds_mean": 0.736,
+  "metric_seconds_mean": 0.058,
+  "wall_seconds": 33.2
+}

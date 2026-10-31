@@ -1,0 +1,22 @@
+{
+  "examples": 250,
+  "clean": 6,
+  "upper_bound": 0.024,
+  "leftovers": {
+    "DISTRIBUTED": 211,
+    "appendonly": 175,
+    "::cast": 105,
+    "TEMP table": 40,
+    "age()": 38,
+    "md5 raw": 34,
+    "date_part": 28,
+    "to_char": 25,
+    "UPDATE..FROM": 21,
+    "DELETE..USING": 19,
+    "DISTINCT ON": 18,
+    "gp_partition": 16,
+    "string_to_array": 15,
+    "generate_series": 12,
+    "json ->>": 9
+  }
+}
