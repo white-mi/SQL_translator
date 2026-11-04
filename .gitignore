@@ -20,3 +20,4 @@ __pycache__/
 
 # raw run logs (summaries in results/ are committed)
 results/**/raw/
+data/holdout/

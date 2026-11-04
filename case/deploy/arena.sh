@@ -11,6 +11,7 @@
 #   data        train copy + public/private from operator seeds (/etc/sqltr-arena/seeds.json), references on Trino
 #   accept      synthetic acceptance (case/acceptance/run.py) in a throwaway directory
 #   journal     init the campaign journal with MAX_SOLUTIONS (once per campaign)
+#   workspace   clean researcher workspace from an allowlist (ADR 0009): no generator, holdout, oracle scripts
 #   start|stop|status   train/public/private evaluators (systemd transient units)
 #   readiness   GET /v1/search-readiness of private with the campaign conditions
 #   researcher-env      print the env block for the researcher container (URLs, no secrets)
@@ -64,9 +65,9 @@ cmd_data() {
   [ -f "$seeds" ] || { echo "missing $seeds (operator seeds, see README: never in git)"; exit 1; }
   cd "$SQLTR_DIR"
   [ -f data/train/dataset.jsonl ] || { echo "run stand/bootstrap.sh first (builds train)"; exit 1; }
-  "${sq[@]}" build-dataset --split public --families "${PUBLIC_FAMILIES:-150}" --seed-file "$seeds" \
+  "${sq[@]}" build-dataset --split public --families "${PUBLIC_FAMILIES:-100}" --seed-file "$seeds" \
     --exclude data/train/instances.jsonl --out "$ROOT/data/public-build"
-  "${sq[@]}" build-dataset --split private --families "${PRIVATE_FAMILIES:-150}" --seed-file "$seeds" \
+  "${sq[@]}" build-dataset --split private --families "${PRIVATE_FAMILIES:-100}" --seed-file "$seeds" \
     --exclude data/train/instances.jsonl "$ROOT/data/public-build/instances.jsonl" --out "$ROOT/data/private-build"
   for s in public private; do "${sq[@]}" build-references --split-dir "$ROOT/data/$s-build" --trino; done
   cp data/train/dataset.jsonl "$ROOT/data/train/dataset.jsonl"
@@ -79,6 +80,27 @@ cmd_accept() {
   local work="$ROOT-accept-$(date -u +%Y%m%dT%H%M%S)"
   (cd "$SQLTR_DIR" && "$SQLTR_DIR/.venv/bin/python" case/acceptance/run.py --arena "$ARENA_DIR" --work "$work" \
      --runner-image "$RUNNER_IMAGE" --local)
+}
+
+# what the researcher may see (ADR 0009); everything else stays with the operator
+WORKSPACE_ALLOW=(README.md case/README.md case/campaign case/dataset/README.md case/harness/README.md
+  case/harness/main.py case/metric/metric.json case/metric/score.py case/metric/metric_config.json
+  case/metric/sqltr_metric case/ways/baseline data/train/dataset.jsonl docs/domain.md docs/arena.md docs/adr)
+
+cmd_workspace() {
+  local ws=${WORKSPACE_DIR:-/srv/sqltr-workspace}
+  [ -e "$ws" ] && { echo "$ws exists: the researcher workspace is created once"; exit 1; }
+  install -d -m 0755 "$ws"
+  (cd "$SQLTR_DIR" && for p in "${WORKSPACE_ALLOW[@]}"; do
+     [ -e "$p" ] || { echo "missing $p"; exit 1; }
+     mkdir -p "$ws/$(dirname "$p")"; cp -r "$p" "$ws/$p"; done)
+  find "$ws" -name __pycache__ -prune -exec rm -rf {} +
+  # guard: nothing from the generator, the holdout or the oracle translations
+  if grep -rlE "oracle_script|sqltr\.gen|sqltr\.holdout|HOLDOUT" "$ws" --include='*.py' --include='*.jsonl' | grep -q .; then
+    echo "workspace leaks operator-only material"; exit 1; fi
+  (cd "$ws" && git init -q && git add -A && git -c user.name=operator -c user.email=operator@localhost commit -qm "researcher workspace")
+  chown -R 10001:10001 "$ws"
+  echo "workspace ready: $ws ($(find "$ws" -type f -not -path '*/.git/*' | wc -l) files)"
 }
 
 cmd_journal() {
@@ -190,7 +212,7 @@ EOF
 }
 
 case "${1:-}" in
-  layout|image|freeze|data|accept|journal|start|stop|status|readiness) "cmd_$1" ;;
+  layout|image|freeze|data|accept|journal|workspace|start|stop|status|readiness) "cmd_$1" ;;
   researcher-env) cmd_researcher_env ;;
   *) sed -n '2,20p' "$0"; exit 1 ;;
 esac

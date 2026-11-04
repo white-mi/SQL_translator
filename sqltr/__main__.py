@@ -105,6 +105,17 @@ def cmd_build_dataset(args) -> None:
     print(json.dumps(templates, sort_keys=True))
 
 
+def cmd_build_holdout(args) -> None:
+    from sqltr.gen.build import write_instances
+    from sqltr.holdout import holdout_instances
+
+    instances = holdout_instances()
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    write_instances(instances, out / "instances.jsonl")
+    print(f"{len(instances)} holdout instances ({len(instances) // 2} script pairs) -> {out}")
+
+
 def cmd_build_references(args) -> None:
     from sqltr.gen.build import read_instances
     from sqltr.references import build_references
@@ -177,6 +188,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--exclude", nargs="*", help="instances.jsonl of other splits whose families are excluded")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_build_dataset)
+
+    p = sub.add_parser("build-holdout", help="out-of-search validation pairs (sqltr/holdout.py)")
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_build_holdout)
 
     p = sub.add_parser("build-references")
     p.add_argument("--split-dir", required=True)

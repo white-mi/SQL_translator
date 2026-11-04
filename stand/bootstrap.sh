@@ -45,6 +45,11 @@ fi
 if [ "$step" = selfcheck ]; then
   run python -m sqltr --local self-check --split-dir data/train
   cp data/train/self_check.json "$OUT/self_check.json"
+  # out-of-search pairs (ADR 0009): references on Trino and pair equivalence
+  run python -m sqltr build-holdout --out data/holdout
+  run python -m sqltr --local build-references --split-dir data/holdout --trino
+  run python -m sqltr --local self-check --split-dir data/holdout
+  cp data/holdout/self_check.json "$OUT/holdout_self_check.json"
   step=baseline
 fi
 
