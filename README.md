@@ -39,6 +39,9 @@ case/                  кейс арены
   dataset/             описание данных и split, generate.py
   campaign/            условия кампании (черновик до замера на ЧП1)
   ways/baseline/       стартовый кандидат: SQLGlot, контракт runner арены
+  harness/             харнес sqltr-program: адаптер runner, образ sqltr-runner:1 (ADR 0008)
+  acceptance/          синтетическая приёмка развёртывания арены (19 проверок)
+  deploy/              развёртывание оценщиков на одной VM: operator.env, arena.sh
 sqltr/                 генератор, хранилище, эталоны, локальный раннер (python -m sqltr)
 stand/                 docker compose: PostgreSQL 16 + Trino 483/Iceberg, скрипты для VM
 docs/                  domain.md, arena.md, adr/, evolution.md, solution.md, talk.md
@@ -56,7 +59,7 @@ pip install -e . pytest
 export SQLTR_PG_HOST=127.0.0.1                      # sqltr_admin - владелец базы sqltr
 python -m sqltr --local setup-pg
 python -m sqltr --local load-states --engine postgres
-python -m pytest -q                                   # 25 тестов метрики, включая жульнические решения
+python -m pytest -q                                   # 46 тестов: метрика (включая жульнические решения), генератор, харнес
 python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
 python -m sqltr --local build-references --split-dir data/train
 python -m sqltr --local run-local --split-dir data/train --directions trino2gp --no-cache --out results/baseline/train-trino2gp
@@ -77,6 +80,14 @@ mkdir -p operator && python -c "import json, secrets; print(json.dumps({'public'
 python -m sqltr build-dataset --split public  --families 100 --seed-file operator/seeds.json --exclude data/train/instances.jsonl --out operator/public
 python -m sqltr build-dataset --split private --families 100 --seed-file operator/seeds.json --exclude data/train/instances.jsonl operator/public/instances.jsonl --out operator/private
 ```
+
+Приёмка арены на синтетике (поднимает train/public/private, проходит мини-кампанию до private):
+
+```bash
+python case/acceptance/run.py --arena /opt/arena --work /tmp/sqltr-accept --runner-image sqltr-runner:1 --local
+```
+
+Локальный прогон 4.11: 19/19 проверок ([отчёт](results/acceptance/local-2026-11-04.json)). Развёртывание на VM - [case/deploy/README.md](case/deploy/README.md).
 
 ## Модели
 

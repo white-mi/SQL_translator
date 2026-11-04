@@ -59,7 +59,8 @@ def test_hardcoded_results_fail_on_other_states(pg_cfg, cases):
     import psycopg
 
     pg = pg_cfg.postgres
-    with psycopg.connect(host=pg.host, port=pg.port, dbname=pg.dbname, user=pg.admin_user, autocommit=True) as c:
+    with psycopg.connect(host=pg.host, port=pg.port, dbname=pg.dbname, user=pg.admin_user,
+                         password=pg.admin_password or None, autocommit=True) as c:
         from sqltr_metric.rewrite import gp_shim
 
         select = gp_shim(inst.oracle_script.split(" AS\n", 1)[1].split(";")[0])

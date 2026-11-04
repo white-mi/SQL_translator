@@ -21,6 +21,8 @@ from .rewrite import gp_incompatible, gp_shim, isolate, outside_writes
 # dialect -> engine that executes it
 DIALECT_ENGINE = {"gp": "postgres", "trino": "trino"}
 DIRECTIONS = {"gp2trino": ("gp", "trino"), "trino2gp": ("trino", "gp")}
+# prefix of the answer the harness adapter (case/harness/main.py) returns when the candidate crashed
+HARNESS_FAULT = "-- sqltr-harness-error:"
 
 
 @dataclass
@@ -106,6 +108,12 @@ def score_answer(example_id: str, task: dict, reference: dict, answer: str, cfg:
 
     if not isinstance(answer, str) or not answer.strip():
         stats.update(failure="empty_answer")
+        return Score(0.0, stats)
+    if answer.lstrip().startswith(HARNESS_FAULT):
+        # the harness adapter reports a crash/timeout of the candidate program as a marked answer
+        first, _, rest = answer.lstrip().partition("\n")
+        stats.update(failure={"kind": "candidate_fault", "fault": first[len(HARNESS_FAULT):].strip(),
+                              "detail": rest[:1500]})
         return Score(0.0, stats)
 
     outside = outside_writes(answer, set(cfg.writable_schemas))

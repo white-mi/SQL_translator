@@ -1,0 +1,267 @@
+{
+  "started": "2026-11-04T01:11:50Z",
+  "seconds": 273,
+  "runner_image": "sqltr-runner:1",
+  "directions": "trino2gp",
+  "passed": 19,
+  "total": 19,
+  "checks": [
+    {
+      "check": "A01 readiness refused before journal init",
+      "passed": true,
+      "detail": "arena client: evaluator returned HTTP 503"
+    },
+    {
+      "check": "A02 readiness after init: campaign gate on",
+      "passed": true,
+      "detail": {
+        "mode": "campaign",
+        "gate_enabled": true,
+        "journal_ready": true,
+        "max_solutions": 4,
+        "finalists": 2,
+        "output_count": 1,
+        "evaluation_enabled": true,
+        "release_id": "sqltr-accept-private"
+      }
+    },
+    {
+      "check": "A03 public does not claim the private gate",
+      "passed": true,
+      "detail": {
+        "mode": "standalone",
+        "gate_enabled": false,
+        "journal_ready": null,
+        "max_solutions": null,
+        "finalists": 5,
+        "output_count": 1,
+        "evaluation_enabled": true,
+        "release_id": "sqltr-accept-public"
+      }
+    },
+    {
+      "check": "A04 proposal limit enforced",
+      "passed": true,
+      "detail": "arena search: proposal limit reached"
+    },
+    {
+      "check": "A05 train: baseline measured with per-example diagnostics",
+      "passed": true,
+      "detail": {
+        "status": "FINISHED",
+        "score": 0.1,
+        "harness": "default",
+        "examples": 30,
+        "failures": {
+          "sql_error": 26,
+          "target_dialect_gate": 1,
+          "ok": 3
+        },
+        "solver_seconds": 39.64622033200044,
+        "judge_seconds": 11.735141107
+      }
+    },
+    {
+      "check": "A06 train: registered harness selected by solution.json",
+      "passed": true,
+      "detail": {
+        "status": "FINISHED",
+        "score": 0.1,
+        "harness": "sqltr-program",
+        "examples": 30,
+        "failures": {
+          "sql_error": 26,
+          "target_dialect_gate": 1,
+          "ok": 3
+        },
+        "solver_seconds": 40.40899330800107,
+        "judge_seconds": 12.248817864
+      }
+    },
+    {
+      "check": "A07 train: crashing candidate scored 0 with candidate_fault (crash-tolerant harness)",
+      "passed": true,
+      "detail": {
+        "status": "FINISHED",
+        "score": 0.0,
+        "harness": "default",
+        "examples": 30,
+        "failures": {
+          "candidate_fault": 30
+        },
+        "solver_seconds": 15.589152394999019,
+        "judge_seconds": 11.541526455
+      }
+    },
+    {
+      "check": "A08 train: empty answers scored 0, not an error",
+      "passed": true,
+      "detail": {
+        "status": "FINISHED",
+        "score": 0.0,
+        "harness": "default",
+        "examples": 30,
+        "failures": {
+          "empty_answer": 30
+        },
+        "solver_seconds": 18.916821370999514,
+        "judge_seconds": 12.227494908
+      }
+    },
+    {
+      "check": "A09 public returns only the aggregate score",
+      "passed": true,
+      "detail": {
+        "status": "complete",
+        "evaluation_id": "f7f9333f90dc805efe0facd3c7353dc47c5f2ccdc7e8224039e10a203afbf705",
+        "scores": [
+          {
+            "candidate_id": "baseline",
+            "score": 0.3
+          }
+        ]
+      }
+    },
+    {
+      "check": "A10 private refused before finalize (no attempt spent)",
+      "passed": true,
+      "detail": "arena client: evaluator returned HTTP 409"
+    },
+    {
+      "check": "A11 private refuses a bundle with the wrong K",
+      "passed": true,
+      "detail": "arena client: evaluator returned HTTP 422"
+    },
+    {
+      "check": "A12 private accepts the finalized K bundle",
+      "passed": true,
+      "detail": "{\n  \"status\": \"running\"\n}"
+    },
+    {
+      "check": "A13 a different bundle is refused after acceptance",
+      "passed": true,
+      "detail": "arena client: evaluator returned HTTP 422"
+    },
+    {
+      "check": "A14 private API exposes status only",
+      "passed": true,
+      "detail": {
+        "status": "complete"
+      }
+    },
+    {
+      "check": "A15 operator record holds scores, winners and the search admission",
+      "passed": true,
+      "detail": {
+        "winners": [
+          "registry"
+        ],
+        "scores": [
+          [
+            "baseline",
+            0.2
+          ],
+          [
+            "registry",
+            0.2
+          ]
+        ]
+      }
+    },
+    {
+      "check": "A16 private state survives restart; identical resubmit is idempotent",
+      "passed": true,
+      "detail": [
+        {
+          "status": "complete"
+        },
+        "{\n  \"status\": \"complete\"\n}"
+      ]
+    },
+    {
+      "check": "A17 crashing finalist scores 0, series completes",
+      "passed": true,
+      "detail": {
+        "wait_exit": 0,
+        "api": {
+          "status": "complete"
+        },
+        "status": "complete",
+        "winners": [
+          "baseline"
+        ],
+        "scores": [
+          [
+            "baseline",
+            0.2
+          ],
+          [
+            "broken",
+            0.0
+          ]
+        ],
+        "failure": null
+      }
+    },
+    {
+      "check": "A18 engine outage fails the series loudly (no zero scores, no winners)",
+      "passed": true,
+      "detail": {
+        "wait_exit": 3,
+        "api": {
+          "status": "failed"
+        },
+        "status": "failed",
+        "winners": null,
+        "scores": [],
+        "failure": {
+          "type": "CommandMetricError",
+          "message": "metric command exited with status 1",
+          "diagnostics": {
+            "command": [
+              "<arena>/.venv/bin/python",
+              "<work>/srv/metric/score.py"
+            ],
+            "returncode": 1,
+            "timed_out": false,
+            "timeout_seconds": 600.0,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"<work>/srv/metric/sqltr_metric/evaluate.py\", line 190, in __init__\n    self.conn = psycopg.connect(host=pg.host, port=pg.port, dbname=pg.dbname, user=pg.admin_user,\n                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                                password=pg.admin_password or None, autocommit=True,\n                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                                connect_timeout=10)\n                                ^^^^^^^^^^^^^^^^^^^\n  File \"<arena>/.venv/lib/python3.13/site-packages/psycopg/connection.py\", line 126, in connect\n    raise last_ex.with_traceback(None)\npsycopg.OperationalError: connection failed: connection to server at \"127.0.0.1\", port 1 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<work>/srv/metric/score.py\", line 40, in <module>\n    sys.exit(main())\n             ~~~~^^\n  File \"<work>/srv/metric/score.py\", line 29, in main\n    cache = PgCache(cfg) if cfg.cache else None\n            ~~~~~~~^^^^^\n  File \"<work>/srv/metric/sqltr_metric/evaluate.py\", line 194, in __init__\n    raise InfraError(f\"cache connection failed: {error}\") from error\nsqltr_metric.engines.InfraError: cache connection failed: connection failed: connection to server at \"127.0.0.1\", port 1 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n",
+            "stdout_truncated": false,
+            "stderr_truncated": false
+          }
+        }
+      }
+    },
+    {
+      "check": "A19 journal consistent after the campaign",
+      "passed": true,
+      "detail": {
+        "max_solutions": 4,
+        "stopped_at": null,
+        "stop_reason": null,
+        "finalization": {
+          "batch_digest": "2cb989682603375d07282b764be6246b6e16b274082fd8ee444633f6beaf76f8",
+          "finalized_at": "2026-11-04T01:10:39.865205+00:00",
+          "previous": [
+            {
+              "batch_digest": "f7f9333f90dc805efe0facd3c7353dc47c5f2ccdc7e8224039e10a203afbf705",
+              "finalized_at": "2026-11-04T01:10:39.387824+00:00"
+            }
+          ]
+        },
+        "stopped": false,
+        "proposed": 4,
+        "remaining_proposals": 0,
+        "running": [],
+        "completed_measurements": 5
+      }
+    }
+  ],
+  "environment": {
+    "host": "sandbox, Docker 29.9.2 (cgroup v1), PostgreSQL 16 local, no Trino",
+    "arena": "pinned checkout (see docs/adr/0001)",
+    "runner_base": "locally assembled python 3.13 (Docker Hub unreachable)",
+    "seeds": "dev acceptance seeds 910001/910002, not operator seeds"
+  }
+}

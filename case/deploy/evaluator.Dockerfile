@@ -1,3 +1,4 @@
+# Alternative layout (not used in the single-VM plan, see README.md): evaluator inside the arena container.
 # Evaluator image with the metric's engine drivers. Build after the arena's own evaluator image:
 #   docker build -f /path/to/sqltr/case/deploy/evaluator.Dockerfile -t sqltr-evaluator:1 .
 FROM arena-evaluator:local
