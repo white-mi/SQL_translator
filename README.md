@@ -59,7 +59,7 @@ pip install -e . pytest
 export SQLTR_PG_HOST=127.0.0.1                      # sqltr_admin - владелец базы sqltr
 python -m sqltr --local setup-pg
 python -m sqltr --local load-states --engine postgres
-python -m pytest -q                                   # 46 тестов: метрика (включая жульнические решения), генератор, харнес
+python -m pytest -q                                   # 48 тестов: метрика (включая жульнические решения), генератор, харнес, holdout
 python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
 python -m sqltr --local build-references --split-dir data/train
 python -m sqltr --local run-local --split-dir data/train --directions trino2gp --no-cache --out results/baseline/train-trino2gp

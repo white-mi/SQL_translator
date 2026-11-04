@@ -35,9 +35,30 @@ Course project (ITMO × DeepPavlov "Agentic LLM Systems", assignment B: a skill 
 | `docs/adr/` | ADR 0001–0009 |
 | `results/` | Committed summaries; raw logs stay out of git |
 
+## How the pieces connect
+
+1. `build-dataset` (`sqltr/gen`): families → `<out>/instances.jsonl`, each instance with `source_script` and `oracle_script`. All variants and both directions of a family land in one split.
+2. `build-references` (`sqltr/references.py`): runs every source script on its source engine over states s1–s4 and writes `dataset.jsonl` (arena format: `id`, `input`, `reference` with output-table hashes) plus `meta.jsonl` (family, template, features; `run-local` uses it for breakdowns, and it stays out of the researcher workspace).
+3. Evaluation: the arena evaluator runs the candidate's `solve.py` in the runner image, then `case/metric/score.py`. `python -m sqltr run-local` is the same loop without the arena.
+
+Inside the metric (`case/metric/sqltr_metric/`):
+
+- One code path builds references and scores answers: `evaluate.run_on_states` runs a script on every state and hashes each output table (`normalize.table_hash`, independent of row and column order). An answer scores 1 only if every output table matches the reference on every state, otherwise 0.
+- Greenplum is emulated by PostgreSQL 16: `rewrite.gp_shim` strips Greenplum storage and distribution clauses before execution, and `rewrite.gp_incompatible` rejects what PostgreSQL accepts but Greenplum 7 does not (currently `MERGE`).
+- Isolation: `rewrite.isolate` maps the logical schemas `retail`, `wrk`, `sandbox` (optionally behind `iceberg.`) to per-run physical schemas such as `retail_s1` and `wrk_<run>_<state>`; answers execute as `sqltr_runner` with statement timeouts. The static `rewrite.outside_writes` check runs first, database grants back it up, and `case/metric/tests/test_score.py` covers both.
+- A defect of the translation is a 0 with the reason in `statistics.failure`; an engine or configuration fault raises `InfraError` and `score.py` exits non-zero (ADR 0002, ADR 0008).
+- Without Trino, trino2gp references use paired mode: the oracle Greenplum rendering runs on PostgreSQL. This is valid only for families that `self-check` on the VM has confirmed equivalent.
+
+## Easy to break
+
+- `sqltr_metric` lives in `case/metric/`, not at the top level. In a plain checkout it imports only because `sqltr/__init__.py` and `conftest.py` put `case/metric` on `sys.path`; a script that uses it imports `sqltr` first.
+- `case/ways/baseline/sqlsplit.py` is a copy of `case/metric/sqltr_metric/sqltext.py`, because a candidate package must be self-contained; a fix in one does not reach the other. The crash marker `-- sqltr-harness-error:` is defined twice, as `MARKER` in `case/harness/main.py` and `HARNESS_FAULT` in `sqltr_metric/evaluate.py`; change both together. `sqltr/runlocal.py` mirrors the runner protocol but records a crash as `solver_failure` rather than a marker.
+- The metric cache (`sqltr_meta.score_cache` in PostgreSQL) is keyed by `METRIC_VERSION`, example id and answer. While changing the metric before freeze, run with `--no-cache` or `SQLTR_CACHE=0` so each answer is executed again instead of served from the cache.
+- `case/metric/metric_config.json` points at the compose hostnames `postgres` and `trino`. Locally, override them with the `SQLTR_*` variables read in `sqltr_metric/config.py`, or pass the global `--local` flag before the subcommand: `python -m sqltr --local run-local ...`.
+
 ## Dev setup (Linux or WSL2)
 
-The scripts are bash and the stand is Docker; on Windows work inside WSL2.
+The scripts are bash and the stand is Docker; on Windows work inside WSL2. Native Windows Python fails quietly: `run-local` starts each candidate with `cwd=/tmp`, which raises on Windows, so every example scores 0 as `solver_failure`.
 
 ```bash
 cp stand/.env.example stand/.env                 # set both passwords
@@ -51,6 +72,8 @@ python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out
 python -m sqltr --local build-references --split-dir data/train
 python -m pytest -q                              # 48 tests
 ```
+
+13 of the 48 tests need that PostgreSQL (the `pg_cfg` fixture in `conftest.py`): all of `case/metric/tests/test_score.py` and one each in `tests/test_generator.py` and `tests/test_holdout.py`. Without a reachable database they are skipped, not failed, so check the skip count. One test: `python -m pytest -q case/metric/tests/test_units.py::test_gp_shim_keeps_cte_with_clause`.
 
 Full stand with Trino (VM, 8 vCPU / 32 GB): `bash stand/bootstrap.sh`, see `stand/README.md`. Arena deployment: `case/deploy/README.md`.
 
