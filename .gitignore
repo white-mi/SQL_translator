@@ -21,3 +21,6 @@ __pycache__/
 # raw run logs (summaries in results/ are committed)
 results/**/raw/
 data/holdout/
+
+# personal Claude Code instructions (handoff notes, local context)
+CLAUDE.local.md
