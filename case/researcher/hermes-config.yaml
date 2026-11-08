@@ -1,0 +1,65 @@
+# Hermes settings for the researcher. run.py fills the @...@ values and writes the result to HERMES_HOME.
+model:
+  default: "@MODEL@"
+  provider: custom
+  base_url: "@BASE_URL@"
+  api_key: "@API_KEY@"
+  api_mode: "@API_MODE@"
+  # Haiku 5.5 charges five times more for a prompt over 100,000 tokens, so Hermes must treat that as
+  # the whole window. The model could take 1M tokens, but the price makes that a bad deal.
+  context_length: 100000
+
+agent:
+  max_turns: 2000
+  reasoning_effort: "@EFFORT@"
+
+fallback_providers: []
+
+compression:
+  enabled: true
+  threshold: 0.75
+  threshold_tokens: 75000
+  target_ratio: 0.20
+
+# Helper calls go through the same gateway and the same model: the gateway refuses any other model.
+auxiliary:
+  compression: &helper
+    provider: custom
+    model: "@MODEL@"
+    base_url: "@BASE_URL@"
+    api_key: "@API_KEY@"
+    api_mode: "@API_MODE@"
+    reasoning_effort: "@EFFORT@"
+    timeout: 900
+  title_generation: *helper
+  session_search: *helper
+  background_review: *helper
+
+delegation:
+  max_concurrent_children: 2
+  subagent_auto_approve: true
+  reasoning_effort: "@EFFORT@"
+  fallback_providers: []
+
+terminal:
+  backend: local
+  cwd: /workspace
+  timeout: 7200
+  lifetime_seconds: 604800
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+approvals:
+  mode: "off"
+
+# all tools are offered directly: a search step in front of them only adds model calls
+tools:
+  tool_search:
+    enabled: "off"
+
+display:
+  tool_progress: off
+  show_reasoning: false
+  streaming: false

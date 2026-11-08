@@ -12,9 +12,15 @@
 #   accept      synthetic acceptance (case/acceptance/run.py) in a throwaway directory
 #   journal     init the campaign journal with MAX_SOLUTIONS (once per campaign)
 #   workspace   clean researcher workspace from an allowlist (ADR 0009): no generator, holdout, oracle scripts
-#   start|stop|status   train/public/private evaluators (systemd transient units)
+#   start|stop|status   train/public/private evaluators and the model gateway (systemd transient units)
 #   readiness   GET /v1/search-readiness of private with the campaign conditions
+#   firewall    research network: only the evaluators and the gateway on this host, no internet
+#   researcher-image    build the researcher image (Hermes plus the arena CLI, ADR 0007)
+#   gateway     model gateway alone: the only process that holds the provider key
+#   researcher <run.py arguments>   run the researcher container; always applies the firewall first
 #   researcher-env      print the env block for the researcher container (URLs, no secrets)
+#
+# SQLTR_OPERATOR_ENV selects another settings file, so a rehearsal can run with its own ROOT, ports and seeds.
 set -euo pipefail
 ENV_FILE=${SQLTR_OPERATOR_ENV:-/etc/sqltr-arena/operator.env}
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE (copy case/deploy/operator.env.example)"; exit 1; }
@@ -22,6 +28,16 @@ set -a; . "$ENV_FILE"; set +a
 PY="$ARENA_DIR/.venv/bin/python"
 SPLITS="train public private"
 SERVICE_USER=${SERVICE_USER:-arena}
+SEEDS_FILE=${SEEDS_FILE:-/etc/sqltr-arena/seeds.json}
+GATEWAY_PORT=${GATEWAY_PORT:-8094}
+RESEARCHER_IMAGE=${RESEARCHER_IMAGE:-sqltr-researcher:1}
+MODEL_CONFIG=${MODEL_CONFIG:-$SQLTR_DIR/case/researcher/gateway.haiku-5-5.json}
+MODEL_NAME=${MODEL_NAME:-claude-haiku-5-5}
+MODEL_MAX_USD=${MODEL_MAX_USD:-10}
+# Inside the researcher container the gateway has this name (docker --add-host). Hermes picks its protocol rules by
+# hostname: for any other name it treats the route as a relay and drops thinking blocks, which the real API requires
+# back during a tool loop. The real API stays out of reach: the firewall allows only the gateway's port.
+MODEL_GATEWAY_HOST=${MODEL_GATEWAY_HOST:-api.anthropic.com}
 
 arena() { (cd "$ARENA_DIR" && "$PY" -m "$@"); }
 port() { case $1 in train) echo "$TRAIN_PORT";; public) echo "$PUBLIC_PORT";; private) echo "$PRIVATE_PORT";; esac; }
@@ -61,7 +77,7 @@ cmd_freeze() {
 }
 
 cmd_data() {
-  local seeds=/etc/sqltr-arena/seeds.json sq=("$SQLTR_DIR/.venv/bin/python" -m sqltr --local)
+  local seeds=$SEEDS_FILE sq=("$SQLTR_DIR/.venv/bin/python" -m sqltr --local)
   [ -f "$seeds" ] || { echo "missing $seeds (operator seeds, see README: never in git)"; exit 1; }
   cd "$SQLTR_DIR"
   [ -f data/train/dataset.jsonl ] || { echo "run stand/bootstrap.sh first (builds train)"; exit 1; }
@@ -179,8 +195,55 @@ cmd_start() {
   sleep 5; cmd_status
 }
 
+cmd_gateway() {  # the key file holds the bare key; it never enters the researcher container (ADR 0007)
+  local key="$ROOT/secrets/model-api-key" token="$ROOT/secrets/model-token"
+  [ -s "$key" ] || { echo "missing $key, see case/researcher/README.md"; exit 1; }
+  # the prefix makes Hermes send it as an API key: other shapes can be taken for an OAuth token, with other headers
+  [ -s "$token" ] || "$PY" -c "import secrets;print('sk-ant-api-sqltr-'+secrets.token_urlsafe(32))" > "$token"
+  chown "$SERVICE_USER" "$key" "$token"; chmod 0600 "$key" "$token"
+  systemctl is-active --quiet sqltr-arena-gateway && { echo "gateway already running"; return; }
+  systemd-run --unit sqltr-arena-gateway --uid "$SERVICE_USER" --property Restart=on-failure \
+    /usr/bin/python3 "$SQLTR_DIR/case/researcher/gateway.py" --config "$MODEL_CONFIG" --key-file "$key" \
+    --client-token-file "$token" --log "$ROOT/model-usage.jsonl" --max-usd "$MODEL_MAX_USD" \
+    --listen "$LISTEN_HOST:$GATEWAY_PORT"
+  sleep 2; curl -fsS "http://$LISTEN_HOST:$GATEWAY_PORT/healthz"; echo
+}
+
+cmd_firewall() {  # idempotent; rules do not survive a reboot, so `researcher` applies them every time
+  local net="${LISTEN_HOST%.*}.0/24"
+  iptables -N SQLTR_RESEARCH_IN 2>/dev/null || iptables -F SQLTR_RESEARCH_IN
+  iptables -A SQLTR_RESEARCH_IN -d "$LISTEN_HOST" -p tcp -m multiport \
+    --dports "$TRAIN_PORT,$PUBLIC_PORT,$PRIVATE_PORT,$GATEWAY_PORT" -j ACCEPT
+  iptables -A SQLTR_RESEARCH_IN -j DROP
+  # not on loopback: the host's own calls to $LISTEN_HOST have that source too, and their replies would be dropped
+  iptables -C INPUT -s "$net" ! -i lo -j SQLTR_RESEARCH_IN 2>/dev/null || iptables -I INPUT -s "$net" ! -i lo -j SQLTR_RESEARCH_IN
+  iptables -C DOCKER-USER -s "$net" -j DROP 2>/dev/null || iptables -I DOCKER-USER -s "$net" -j DROP
+  echo "firewall: $net reaches only $LISTEN_HOST:$TRAIN_PORT,$PUBLIC_PORT,$PRIVATE_PORT,$GATEWAY_PORT, no internet"
+}
+
+cmd_researcher_image() {
+  docker build -f "$SQLTR_DIR/case/researcher/Dockerfile" --build-context "sqltr=$SQLTR_DIR/case/researcher" \
+    -t "$RESEARCHER_IMAGE" "$ARENA_DIR"
+  docker images --digests "${RESEARCHER_IMAGE%%:*}"
+}
+
+cmd_researcher() {
+  cmd_firewall
+  local ws=${WORKSPACE_DIR:-/srv/sqltr-workspace} secrets="$ROOT/research-secrets" t
+  install -d -m 0700 -o 10001 -g 10001 "$secrets"
+  for t in train public private model; do
+    install -m 0400 -o 10001 -g 10001 "$ROOT/secrets/$t-token" "$secrets/$t-token"
+  done
+  docker run --rm --name sqltr-researcher --network arena-research --add-host "$MODEL_GATEWAY_HOST:$LISTEN_HOST" \
+    --user 10001:10001 --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 512 --memory 3g --cpus 2 \
+    --tmpfs /tmp:rw,nosuid,size=1g,mode=1777 \
+    --mount "type=bind,src=$ws,dst=/workspace" --mount "type=bind,src=$ROOT/search,dst=/search" \
+    --mount "type=bind,src=$secrets,dst=/run/secrets,readonly" \
+    --env-file <(cmd_researcher_env | grep -v '^#') "$RESEARCHER_IMAGE" "$@"
+}
+
 cmd_stop() {
-  for s in $SPLITS; do
+  for s in $SPLITS gateway; do
     if [ -d /run/systemd/system ]; then systemctl stop "sqltr-arena-$s" 2>/dev/null || true
     elif [ -f "$ROOT/logs/$s.pid" ]; then pkill -P "$(cat "$ROOT/logs/$s.pid")" 2>/dev/null; kill "$(cat "$ROOT/logs/$s.pid")" 2>/dev/null; rm -f "$ROOT/logs/$s.pid"
     fi
@@ -206,13 +269,23 @@ cmd_researcher_env() {
 SQLTR_TRAIN_URL=http://$LISTEN_HOST:$TRAIN_PORT
 SQLTR_PUBLIC_URL=http://$LISTEN_HOST:$PUBLIC_PORT
 SQLTR_PRIVATE_URL=http://$LISTEN_HOST:$PRIVATE_PORT
+SQLTR_MODEL_URL=http://$MODEL_GATEWAY_HOST:$GATEWAY_PORT
+ARENA_MODEL_NAME=$MODEL_NAME
 ARENA_SEARCH_JOURNAL=/search/search.sqlite3
-# tokens: copy $ROOT/secrets/{train,public,private}-token into the researcher's secret mount, read-only
+TRAIN_DATASET_ID=$TRAIN_DATASET_ID
+CONDITIONS_ID=$CONDITIONS_ID
+RELEASE_ID=$RELEASE_ID
+MAX_SOLUTIONS=$MAX_SOLUTIONS
+FINALISTS=$FINALISTS
+OUTPUT_COUNT=$OUTPUT_COUNT
+# tokens: the researcher command mounts copies of $ROOT/secrets/{train,public,private,model}-token read-only at /run/secrets
 EOF
 }
 
 case "${1:-}" in
-  layout|image|freeze|data|accept|journal|workspace|start|stop|status|readiness) "cmd_$1" ;;
+  layout|image|freeze|data|accept|journal|workspace|start|stop|status|readiness|firewall|gateway) "cmd_$1" ;;
+  researcher-image) cmd_researcher_image ;;
+  researcher) shift; cmd_researcher "$@" ;;
   researcher-env) cmd_researcher_env ;;
-  *) sed -n '2,20p' "$0"; exit 1 ;;
+  *) sed -n '2,26p' "$0"; exit 1 ;;
 esac
