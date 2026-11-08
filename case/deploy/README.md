@@ -29,8 +29,13 @@ sudo bash case/deploy/arena.sh data       # public/private из сидов оп�
 sudo bash case/deploy/arena.sh journal    # журнал кампании с MAX_SOLUTIONS
 sudo bash case/deploy/arena.sh start      # три оценщика (systemd transient units)
 sudo bash case/deploy/arena.sh readiness  # должен вернуть mode=campaign, gate_enabled=true, journal_ready=true
-sudo bash case/deploy/arena.sh researcher-env   # URL для контейнера исследователя
+sudo bash case/deploy/arena.sh workspace        # workspace исследователя по разрешенному списку (ADR 0009)
+sudo bash case/deploy/arena.sh researcher-image # образ sqltr-researcher:1 (ADR 0007)
+sudo bash case/deploy/arena.sh gateway          # шлюз модели; нужен файл с ключом, см. case/researcher/README.md
+sudo bash case/deploy/arena.sh researcher --prompt-file <файл в /workspace>   # запуск исследователя
 ```
+
+Перед настоящей кампанией все эти шаги можно пройти в отдельном каталоге с фальшивым провайдером: `case/researcher/rehearsal.sh`.
 
 Порядок важен: приёмка идёт до заморозки и до private-данных, она не трогает журнал и state кампании. `freeze` и `journal` выполняются один раз: повторный вызов откажет, чтобы не подменить условия работающей кампании.
 
@@ -44,29 +49,18 @@ sudo bash case/deploy/arena.sh researcher-env   # URL для контейнер�
 | `/srv/sqltr-arena/state-*`, `usage-*` | arena, 0700 | оценщики; `state-private/*/record.json` - итог private для оператора |
 | `/srv/sqltr-arena/search` | 10001:arena, 0770 | исследователь пишет, private-оценщик читает |
 | `/srv/sqltr-arena/search-control` | arena, 0700 | свидетельство досрочной остановки - только оператор |
-| `/srv/sqltr-arena/secrets/*-token` | arena, 0600 | оператор копирует исследователю в read-only mount |
+| `/srv/sqltr-arena/secrets/{train,public,private,model}-token` | arena, 0600 | команда `researcher` монтирует копии исследователю, read-only |
+| `/srv/sqltr-arena/secrets/model-api-key` | arena, 0600 | только шлюз модели |
+| `/srv/sqltr-arena/model-usage.jsonl` | arena | журнал вызовов модели: токены и стоимость; сумма по нему - потраченное |
 | `/srv/sqltr-arena/env/*.env` | root, 0600 | systemd; содержит пароли движков |
 
 ## Контейнер исследователя
 
-```bash
-docker run -it --name sqltr-researcher --network arena-research --user 10001:10001 \
-  --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,size=1g \
-  --mount type=bind,src=/srv/sqltr-workspace,dst=/workspace \
-  --mount type=bind,src=/srv/sqltr-arena/search,dst=/search \
-  --mount type=bind,src=/srv/sqltr-research-secrets,dst=/run/secrets,readonly \
-  --env-file <(sudo bash case/deploy/arena.sh researcher-env | grep -v '^#') \
-  arena-researcher:local
-```
+Запускает команда `arena.sh researcher`: контейнер `sqltr-researcher:1` в сети `arena-research`, без привилегий, с корнем только для чтения, лимитом 3 ГБ памяти и монтированием workspace, журнала и токенов. Образ и настройки описаны в [case/researcher/README.md](../researcher/README.md).
 
-`/srv/sqltr-workspace` - чистая копия репозитория с train (без `operator/`, `.env`, `data/public`, `data/private`). Агентный харнес (Hermes) и ключ модели добавляются по ответу руководителя (ADR 0007). Локальная проверка показала: из такого контейнера доступны журнал, train/public/private API; PostgreSQL и Trino недоступны (слушают только 127.0.0.1), Docker socket и каталоги оператора не видны.
+`/srv/sqltr-workspace` - чистая копия по разрешенному списку (ADR 0009): без генератора, эталонов и holdout. Репетиция 8.11 ([отчет](../../results/researcher/rehearsal-2026-11-08.json)) проверила изнутри контейнера: доступны журнал, API оценщиков и шлюз модели; PostgreSQL, Trino, SSH и интернет недоступны; ключа провайдера, Docker socket и каталогов оператора не видно.
 
-Firewall на хосте: из `172.30.0.0/24` разрешить только порты 8091-8093 адреса 172.30.0.1, остальное входящее с этой сети запретить; исходящий интернет исследователя - по ответу руководителя о модели.
-
-```bash
-sudo iptables -I INPUT -s 172.30.0.0/24 -d 172.30.0.1 -p tcp -m multiport --dports 8091:8093 -j ACCEPT
-sudo iptables -I INPUT 2 -s 172.30.0.0/24 -j DROP
-```
+Брандмауэр применяет команда `arena.sh firewall`, а `researcher` вызывает ее при каждом запуске, потому что правила не переживают перезагрузку: из сети исследователя открыты только порты оценщиков и шлюза на `172.30.0.1`, пересылка наружу запрещена. На интерфейс `lo` правила не действуют: собственные обращения хоста к этому адресу (`status`, `readiness`) идут с адресом из той же сети.
 
 ## Эксплуатация
 
@@ -74,4 +68,4 @@ sudo iptables -I INPUT 2 -s 172.30.0.0/24 -j DROP
 - Логи: `journalctl -u sqltr-arena-<split>` (на хосте без systemd - `/srv/sqltr-arena/logs/<split>.log`).
 - Рестарт оценщика не теряет private: принятый пакет и статус хранятся в `state-private` (проверено приёмкой, A16).
 - Сбой движка во время private даёт `failed` без частичных оценок (A18). Разбор - по `record.json` и логам; новую серию назначает только руководитель (вопрос 5).
-- Train-сервис считает примеры одного запроса последовательно, параллелятся разные запросы до `EXECUTION_SLOTS`. Замер на VM 8.11 (2 vCPU): решатель в контейнере ~0.7 с на пример, метрика на Trino ~2.5 с. Полный train из 500 примеров без кэша - 11 минут у baseline (пересчет по 30 примерам приемки), 16-18 минут, если все переводы верные. Для быстрых итераций исследователь берёт фиксированную подвыборку (`--example-id`), основную кривую дает полный прогон каждого кандидата (`campaign.md`).
+- Train-сервис считает примеры одного запроса последовательно, параллелятся разные запросы до `EXECUTION_SLOTS`. Замер на VM 8.11 (2 vCPU): решатель в контейнере ~0.6 с на пример, метрика на Trino ~2.5 с. Полный train из 500 примеров - 17 минут, если все переводы верные (без кэша метрики), 11 минут у baseline, 9 минут при тех же переводах с кэшем ([отчет](../../results/stand/full-train-2026-11-08.json)). Для быстрых итераций исследователь берёт фиксированную подвыборку (`--example-id`), основную кривую дает полный прогон каждого кандидата (`campaign.md`).

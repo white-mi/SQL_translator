@@ -12,7 +12,7 @@
 | Baseline (SQLGlot), gp2trino | 0.012 | до старта кампании | после кампании |
 | Выращенное решение | - | - | - |
 
-Лимит предложенных решений: ориентир 50, замер на стенде его подтверждает (полный train - 11-18 минут на кандидата). Кандидатов в журнале: 0. AUC: -.
+Лимит предложенных решений: ориентир 50, замер на стенде его подтверждает (полный train - 9-17 минут на кандидата, [замер](results/stand/full-train-2026-11-08.json)). Кандидатов в журнале: 0. AUC: -.
 
 Train-цифры получены на VM 8.11 (2 vCPU, 8 ГБ RAM) исполнением на настоящих PostgreSQL и Trino: [сводка](results/baseline/train/summary.json), [материалы стенда](results/stand/). Self-check: все 250 пар train и все 12 пар holdout дают равные результаты на двух движках. На holdout baseline решает gp2trino 1 из 12, trino2gp 0 из 12 ([сводка](results/baseline/holdout/summary.json)).
 
@@ -40,8 +40,9 @@ case/                  кейс арены
   campaign/            условия кампании (черновик до подготовки кампании)
   ways/baseline/       стартовый кандидат: SQLGlot, контракт runner арены
   harness/             харнес sqltr-program: адаптер runner, образ sqltr-runner:1 (ADR 0008)
-  acceptance/          синтетическая приёмка развёртывания арены (19 проверок)
+  acceptance/          синтетическая приёмка развёртывания арены (19 проверок), замер стоимости кандидата
   deploy/              развёртывание оценщиков на одной VM: operator.env, arena.sh
+  researcher/          образ исследователя с Hermes, шлюз модели с лимитом расходов, репетиция без расходов (ADR 0007)
 sqltr/                 генератор, хранилище, эталоны, локальный раннер (python -m sqltr)
 stand/                 docker compose: PostgreSQL 16 + Trino 483/Iceberg, скрипты для VM
 docs/                  domain.md, arena.md, adr/, evolution.md, solution.md, talk.md
@@ -59,7 +60,7 @@ pip install -e . pytest
 export SQLTR_PG_HOST=127.0.0.1                      # sqltr_admin - владелец базы sqltr
 python -m sqltr --local setup-pg
 python -m sqltr --local load-states --engine postgres
-python -m pytest -q                                   # 48 тестов: метрика (включая жульнические решения), генератор, харнес, holdout
+python -m pytest -q                                   # 73 теста: метрика (включая жульнические решения), генератор, харнес, holdout, шлюз модели
 python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
 python -m sqltr --local build-references --split-dir data/train
 python -m sqltr --local run-local --split-dir data/train --directions trino2gp --no-cache --out results/baseline/train-trino2gp
@@ -91,7 +92,7 @@ python case/acceptance/run.py --arena /opt/arena --work /tmp/sqltr-accept --runn
 
 ## Модели
 
-Исследователи арены и LLM-фоллбэк решателя: Claude Haiku 5.5, уровень усилия Max. Индекс Artificial Analysis - 36, у DeepSeek V4.1 Flash 1017 - 32 (проверено 31.10.2026), поэтому правило курса 0-1 выполнено. Основная кампания идет с решателем без модели; LLM-харнес подключается после приемки gateway. Подробности в [ADR 0007](docs/adr/0007-models.md).
+Исследователи арены и LLM-фоллбэк решателя: Claude Haiku 5.5, уровень усилия Max. Индекс Artificial Analysis - 36, у DeepSeek V4.1 Flash 1017 - 32 (проверено 31.10.2026), поэтому правило курса 0-1 выполнено. Основная кампания идет с решателем без модели; LLM-харнес подключается после приемки gateway. Все вызовы модели исследователя идут через свой шлюз с лимитом расходов: ключ есть только у него. Вся цепочка проверена без расходов, с фальшивым провайдером ([отчет](results/researcher/rehearsal-2026-11-08.json)); настоящих вызовов модели пока не было. Подробности в [ADR 0007](docs/adr/0007-models.md) и [case/researcher/README.md](case/researcher/README.md).
 
 ## Арена
 
