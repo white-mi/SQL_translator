@@ -1,0 +1,15 @@
+{
+  "built": 500,
+  "skipped": [],
+  "engines": {
+    "postgres": 250,
+    "trino": 250
+  },
+  "states": [
+    "s1",
+    "s2",
+    "s3",
+    "s4"
+  ],
+  "seconds": 684.9
+}

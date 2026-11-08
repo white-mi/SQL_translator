@@ -1,0 +1,409 @@
+{
+  "examples": 24,
+  "score": 0.0416,
+  "by_direction": {
+    "gp2trino": {
+      "n": 12,
+      "score": 0.0833
+    },
+    "trino2gp": {
+      "n": 12,
+      "score": 0.0
+    }
+  },
+  "by_template": {
+    "gp2trino/holdout:basket_pairs": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:clean_orders": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:contact_quality": {
+      "n": 1,
+      "score": 1.0
+    },
+    "gp2trino/holdout:device_mix": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:first_order_span": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:latest_stock": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:payment_lag": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:price_bands": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:region_channel_rollup": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:rolling_7d": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:tag_revenue": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/holdout:weekly_cohorts": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:basket_pairs": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:clean_orders": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:contact_quality": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:device_mix": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:first_order_span": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:latest_stock": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:payment_lag": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:price_bands": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:region_channel_rollup": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:rolling_7d": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:tag_revenue": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/holdout:weekly_cohorts": {
+      "n": 1,
+      "score": 0.0
+    }
+  },
+  "by_feature": {
+    "gp2trino/aggregate_filter": {
+      "n": 5,
+      "score": 0.2
+    },
+    "gp2trino/boolean_filter": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/case_bands": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/colon_cast": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/count_distinct": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/cte_chain": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/cyrillic_length": {
+      "n": 1,
+      "score": 1.0
+    },
+    "gp2trino/date_minus_date": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/date_trunc_week": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/delete_using": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/distinct_on": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/empty_source": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/epoch_diff": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/floor_division": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/gp_distribution": {
+      "n": 2,
+      "score": 0.0
+    },
+    "gp2trino/gp_storage": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/grouping_function": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/having": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/integer_division": {
+      "n": 2,
+      "score": 0.0
+    },
+    "gp2trino/json_get": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/json_number": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/left_join": {
+      "n": 2,
+      "score": 0.0
+    },
+    "gp2trino/left_join_zero_fill": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/multi_output": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/rank_desc_nulls": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/regex_match": {
+      "n": 1,
+      "score": 1.0
+    },
+    "gp2trino/rollup": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/self_join": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/series_days": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/split_part": {
+      "n": 1,
+      "score": 1.0
+    },
+    "gp2trino/string_agg_distinct": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/subquery_join": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/temp_table": {
+      "n": 4,
+      "score": 0.0
+    },
+    "gp2trino/unnest_tags": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/using_join": {
+      "n": 1,
+      "score": 0.0
+    },
+    "gp2trino/window_frame": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/aggregate_filter": {
+      "n": 5,
+      "score": 0.0
+    },
+    "trino2gp/boolean_filter": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/case_bands": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/colon_cast": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/count_distinct": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/cte_chain": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/cyrillic_length": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/date_minus_date": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/date_trunc_week": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/delete_using": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/distinct_on": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/empty_source": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/epoch_diff": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/floor_division": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/gp_distribution": {
+      "n": 2,
+      "score": 0.0
+    },
+    "trino2gp/gp_storage": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/grouping_function": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/having": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/integer_division": {
+      "n": 2,
+      "score": 0.0
+    },
+    "trino2gp/json_get": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/json_number": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/left_join": {
+      "n": 2,
+      "score": 0.0
+    },
+    "trino2gp/left_join_zero_fill": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/multi_output": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/rank_desc_nulls": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/regex_match": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/rollup": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/self_join": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/series_days": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/split_part": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/string_agg_distinct": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/subquery_join": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/temp_table": {
+      "n": 4,
+      "score": 0.0
+    },
+    "trino2gp/unnest_tags": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/using_join": {
+      "n": 1,
+      "score": 0.0
+    },
+    "trino2gp/window_frame": {
+      "n": 1,
+      "score": 0.0
+    }
+  },
+  "failures": {
+    "sql_error": 21,
+    "mismatch": 2
+  },
+  "solver_seconds_mean": 0.289,
+  "metric_seconds_mean": 0.574,
+  "wall_seconds": 11.0
+}
