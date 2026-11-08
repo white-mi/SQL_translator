@@ -8,13 +8,13 @@
 
 | | Train | Public | Private |
 |---|---|---|---|
-| Baseline (SQLGlot), trino2gp | 0.116 | после ЧП1 | после кампании |
-| Baseline (SQLGlot), gp2trino | ≤ 0.024 (офлайн-оценка) | после ЧП1 | после кампании |
+| Baseline (SQLGlot), trino2gp | 0.116 | до старта кампании | после кампании |
+| Baseline (SQLGlot), gp2trino | 0.012 | до старта кампании | после кампании |
 | Выращенное решение | - | - | - |
 
-Лимит предложенных решений: ориентир 50, уточняется по замеру на ЧП1. Кандидатов в журнале: 0. AUC: -.
+Лимит предложенных решений: ориентир 50, замер на стенде его подтверждает (полный train - 11-18 минут на кандидата). Кандидатов в журнале: 0. AUC: -.
 
-Train-цифры получены локально на PostgreSQL. Для gp2trino нужен Trino, поэтому пока дана верхняя граница: доля переводов, в которых не осталось конструкций Greenplum. Точные цифры по обоим направлениям считает `stand/bootstrap.sh` на VM.
+Train-цифры получены на VM 8.11 (2 vCPU, 8 ГБ RAM) исполнением на настоящих PostgreSQL и Trino: [сводка](results/baseline/train/summary.json), [материалы стенда](results/stand/). Self-check: все 250 пар train и все 12 пар holdout дают равные результаты на двух движках. На holdout baseline решает gp2trino 1 из 12, trino2gp 0 из 12 ([сводка](results/baseline/holdout/summary.json)).
 
 ## Как устроено
 
@@ -37,7 +37,7 @@ flowchart LR
 case/                  кейс арены
   metric/              пакет метрики: metric.json, score.py, sqltr_metric/, тесты
   dataset/             описание данных и split, generate.py
-  campaign/            условия кампании (черновик до замера на ЧП1)
+  campaign/            условия кампании (черновик до подготовки кампании)
   ways/baseline/       стартовый кандидат: SQLGlot, контракт runner арены
   harness/             харнес sqltr-program: адаптер runner, образ sqltr-runner:1 (ADR 0008)
   acceptance/          синтетическая приёмка развёртывания арены (19 проверок)
@@ -87,7 +87,7 @@ python -m sqltr build-dataset --split private --families 100 --seed-file operato
 python case/acceptance/run.py --arena /opt/arena --work /tmp/sqltr-accept --runner-image sqltr-runner:1 --local
 ```
 
-Локальный прогон 4.11: 19/19 проверок ([отчёт](results/acceptance/local-2026-11-04.json)). Развёртывание на VM - [case/deploy/README.md](case/deploy/README.md).
+Локальный прогон 4.11 только на PostgreSQL: 19/19 проверок ([отчёт](results/acceptance/local-2026-11-04.json)). На VM 8.11 с Trino и обоими направлениями: 19/19 за 302 с ([отчёт](results/acceptance/vm-2026-11-08.json)). Развёртывание на VM - [case/deploy/README.md](case/deploy/README.md).
 
 ## Модели
 

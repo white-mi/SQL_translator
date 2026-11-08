@@ -54,6 +54,7 @@ Inside the metric (`case/metric/sqltr_metric/`):
 - `sqltr_metric` lives in `case/metric/`, not at the top level. In a plain checkout it imports only because `sqltr/__init__.py` and `conftest.py` put `case/metric` on `sys.path`; a script that uses it imports `sqltr` first.
 - `case/ways/baseline/sqlsplit.py` is a copy of `case/metric/sqltr_metric/sqltext.py`, because a candidate package must be self-contained; a fix in one does not reach the other. The crash marker `-- sqltr-harness-error:` is defined twice, as `MARKER` in `case/harness/main.py` and `HARNESS_FAULT` in `sqltr_metric/evaluate.py`; change both together. `sqltr/runlocal.py` mirrors the runner protocol but records a crash as `solver_failure` rather than a marker.
 - The metric cache (`sqltr_meta.score_cache` in PostgreSQL) is keyed by `METRIC_VERSION`, example id and answer. While changing the metric before freeze, run with `--no-cache` or `SQLTR_CACHE=0` so each answer is executed again instead of served from the cache.
+- A Trino memory-limit error counts as a translation fault (`engines.py`, `_LIMITS`), so too small a limit gives silent zeros, not a failure. Trino's heap is set in `stand/trino/jvm.config` (60% of `mem_limit`, 2.4 GB; it also needs about 0.8 GB outside the heap). Rerun `self-check` after changing either; `equal` must equal `checked`.
 - `case/metric/metric_config.json` points at the compose hostnames `postgres` and `trino`. Locally, override them with the `SQLTR_*` variables read in `sqltr_metric/config.py`, or pass the global `--local` flag before the subcommand: `python -m sqltr --local run-local ...`.
 
 ## Dev setup (Linux or WSL2)
@@ -75,7 +76,7 @@ python -m pytest -q                              # 48 tests
 
 13 of the 48 tests need that PostgreSQL (the `pg_cfg` fixture in `conftest.py`): all of `case/metric/tests/test_score.py` and one each in `tests/test_generator.py` and `tests/test_holdout.py`. Without a reachable database they are skipped, not failed, so check the skip count. One test: `python -m pytest -q case/metric/tests/test_units.py::test_gp_shim_keeps_cte_with_clause`.
 
-Full stand with Trino (VM, 8 vCPU / 32 GB): `bash stand/bootstrap.sh`, see `stand/README.md`. Arena deployment: `case/deploy/README.md`.
+Full stand with Trino (VM, measured on 2 vCPU / 8 GB): `bash stand/bootstrap.sh`, see `stand/README.md`. Arena deployment: `case/deploy/README.md`.
 
 Arena acceptance (needs Docker, `data/train`, the runner image, and the pinned arena checkout with its `.venv` plus the metric drivers: `../arena/.venv/bin/python -m pip install "psycopg[binary]==3.3.6" "trino==0.340.0"`):
 
@@ -84,9 +85,9 @@ docker build -f case/harness/runner.Dockerfile -t sqltr-runner:1 .
 python case/acceptance/run.py --arena ../arena --work /tmp/sqltr-accept-1 --runner-image sqltr-runner:1 --local --directions trino2gp
 ```
 
-## Status (2026-11-04)
+## Status (2026-11-08)
 
-- Metric, generator, baseline, stand, docs: done and tested locally on PostgreSQL. Trino side not yet run (needs the VM).
-- Arena acceptance 19/19 in a sandbox (`results/acceptance/local-2026-11-04.json`).
-- Baseline: train trino2gp 0.116; gp2trino ≤ 0.024 (offline upper bound); holdout trino2gp 0/12.
-- Next: VM → `stand/bootstrap.sh` → `case/deploy/arena.sh` steps → checkpoint 1 numbers → campaign (limit ≈ 50, K = 5, N = 3).
+- Stand and arena run on the VM (2 vCPU / 8 GB) with real Trino: self-check 250/250 train and 12/12 holdout; arena acceptance 19/19 (`results/acceptance/vm-2026-11-08.json`).
+- Baseline: train gp2trino 0.012, trino2gp 0.116; holdout gp2trino 1/12, trino2gp 0/12.
+- Candidate cost without the cache: full train 11–18 minutes on that VM.
+- Done through `arena.sh accept`. Next: `freeze` → `data` → `journal` → `workspace` → `start` → researcher (needs a model key) → campaign (limit ≈ 50, K = 5, N = 3).
