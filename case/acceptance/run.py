@@ -38,6 +38,7 @@ class Acceptance:
         self.checks: list[dict] = []
         self.procs: dict[str, subprocess.Popen] = {}
         self.ports: dict[str, int] = {}
+        self.poll_seconds = 2
 
     # ------------------------------------------------------------------ helpers
     def arena_cli(self, *argv, ok=True) -> tuple[int, str]:
@@ -178,7 +179,7 @@ class Acceptance:
                                     "--evaluation-id", evaluation)
             if json.loads(out)["status"] != "RUNNING":
                 break
-            time.sleep(2)
+            time.sleep(self.poll_seconds)
         result_file = self.work / "results" / f"{measurement}.json"
         result_file.parent.mkdir(parents=True, exist_ok=True)
         _, out = self.arena_cli("evaluator.train", "result", "--url", url, "--token-file", token, "--journal", journal,

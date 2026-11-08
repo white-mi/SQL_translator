@@ -29,6 +29,10 @@ python case/acceptance/run.py --arena /opt/arena --work /srv/sqltr-accept-$(date
 
 Результат локального прогона (песочница, только PostgreSQL): [results/acceptance/local-2026-11-04.json](../../results/acceptance/local-2026-11-04.json) - 19/19 за 273 с. На VM 8.11 с Trino и обоими направлениями: [results/acceptance/vm-2026-11-08.json](../../results/acceptance/vm-2026-11-08.json) - 19/19 за 302 с.
 
+## Стоимость кандидата
+
+`full_train.py` проводит весь train (500 примеров) через арену с настоящими runner и метрикой, в одноразовом каталоге, и замеряет три случая: кандидат с эталонными переводами без кэша метрики (score должен быть ровно 1.0, это заодно проверка всей цепочки), baseline и повтор baseline с кэшем. Скрипт только для оператора: он читает эталоны из `data/train/instances.jsonl`, поэтому в workspace исследователя не попадает (ADR 0009). Результат на VM 8.11: [results/stand/full-train-2026-11-08.json](../../results/stand/full-train-2026-11-08.json).
+
 ## Наблюдения из прогона
 
 - Ничья по score между финалистами решается временем решателя (политика `score-direction-known-tokens-asc-seconds-asc-id-asc-v2`): в двух прогонах с одинаковыми кандидатами победитель менялся. Финалисты должны различаться по механизму, а не быть копиями.

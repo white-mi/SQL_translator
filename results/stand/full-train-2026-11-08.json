@@ -1,0 +1,49 @@
+{
+  "started": "2026-11-08T14:52:47Z",
+  "runner_image": "sqltr-runner:1",
+  "measurements": [
+    {
+      "candidate": "perfect",
+      "metric_cache": "off",
+      "status": "FINISHED",
+      "score": 1.0,
+      "examples": 500,
+      "failures": {},
+      "solver_seconds": 229.2,
+      "metric_seconds": 705.3,
+      "wall_minutes": 17.1
+    },
+    {
+      "candidate": "baseline",
+      "metric_cache": "on",
+      "status": "FINISHED",
+      "score": 0.064,
+      "examples": 500,
+      "failures": {
+        "sql_error": 444,
+        "target_dialect_gate": 21,
+        "mismatch": 3
+      },
+      "solver_seconds": 304.4,
+      "metric_seconds": 261.2,
+      "wall_minutes": 11.1
+    },
+    {
+      "candidate": "baseline-repeat",
+      "metric_cache": "on",
+      "status": "FINISHED",
+      "score": 0.064,
+      "examples": 500,
+      "failures": {
+        "sql_error": 444,
+        "target_dialect_gate": 21,
+        "mismatch": 3
+      },
+      "solver_seconds": 291.3,
+      "metric_seconds": 170.8,
+      "wall_minutes": 9.4
+    }
+  ],
+  "lowest_available_memory_mb": 4383,
+  "trino_peak_memory_mb": 2804
+}
