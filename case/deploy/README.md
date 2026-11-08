@@ -22,9 +22,9 @@ sudo cp case/deploy/operator.env.example /etc/sqltr-arena/operator.env   # за�
 sudo cp operator/seeds.json /etc/sqltr-arena/seeds.json                  # секретные сиды public/private, не в git
 
 sudo bash case/deploy/arena.sh layout     # пользователь arena, каталоги, токены, сеть arena-research, драйверы в venv арены
-sudo bash case/deploy/arena.sh image      # sqltr-runner:1 (харнес ADR 0008); записать digest в campaign.md
+sudo bash case/deploy/arena.sh image      # sqltr-runner:1 (харнес ADR 0008); записать digest в preparation.md
 sudo bash case/deploy/arena.sh accept     # синтетическая приёмка: 19 проверок, ~5 минут, отдельный каталог
-sudo bash case/deploy/arena.sh freeze     # заморозка метрики, sha256 lock-файла -> campaign.md
+sudo bash case/deploy/arena.sh freeze     # заморозка метрики, sha256 lock-файла -> preparation.md
 sudo bash case/deploy/arena.sh data       # public/private из сидов оператора, эталоны на Trino
 sudo bash case/deploy/arena.sh journal    # журнал кампании с MAX_SOLUTIONS
 sudo bash case/deploy/arena.sh start      # три оценщика (systemd transient units)

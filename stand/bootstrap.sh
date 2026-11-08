@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring up the stand and produce the checkpoint-1 evidence in results/stand/.
+# Bring up the stand and produce its evidence in results/stand/.
 #   bash stand/bootstrap.sh            # full run
 #   STEP=baseline bash stand/bootstrap.sh   # rerun from one step: engines|load|refs|selfcheck|baseline
 set -euo pipefail
@@ -59,4 +59,4 @@ if [ "$step" = baseline ]; then
   cp results/baseline/train/summary.json "$OUT/baseline_summary.json"
 fi
 
-echo "Evidence is in $OUT and results/baseline/train. Commit them: git add results && git commit -m 'stand: checkpoint-1 evidence'"
+echo "Evidence is in $OUT and results/baseline/train. Commit them: git add results && git commit -m 'stand: evidence'"

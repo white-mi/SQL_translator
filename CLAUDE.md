@@ -34,7 +34,7 @@ Course project (ITMO × DeepPavlov "Agentic LLM Systems", assignment B: a skill 
 | `sqltr/warehouse.py`, `sqltr/references.py` | Synthetic warehouse with states s1–s4; references and self-check |
 | `stand/` | Docker Compose stand: PostgreSQL 16.4 + Trino 483 on Iceberg; `vm-setup.sh`, `bootstrap.sh` |
 | `docs/adr/` | ADR 0001–0009 |
-| `results/` | Committed summaries; raw logs stay out of git |
+| `results/` | Committed summaries, indexed in `results/README.md`; raw logs stay out of git; `archive/` holds the superseded local measurements of 2026-11-04 |
 
 ## How the pieces connect
 
@@ -59,6 +59,7 @@ Inside the metric (`case/metric/sqltr_metric/`):
 - Researcher container, each found the hard way by `case/researcher/rehearsal.sh`: the gateway must be named `api.anthropic.com` inside the container (`--add-host`), or Hermes treats it as a relay and drops thinking blocks; the gateway token must start with `sk-ant-api`, or Hermes may take it for OAuth; the arena CLI's packages live in the system Python because the agent's terminal is a login shell that resets `PATH`; everything Hermes needs must be in the image, because the researcher has no internet. Details in `case/researcher/README.md`.
 - `case/researcher/gateway.py` forwards the request body byte for byte: editing it would break prompt caching. Haiku 5.5 charges five times more above 100,000 prompt tokens, which is why `hermes-config.yaml` caps the window there; check `long_prompt` in `model-usage.jsonl`.
 - `arena.sh` evaluator units have fixed names, so a rehearsal and the real campaign cannot run side by side; `rehearsal.sh` refuses once the campaign journal exists.
+- `WORKSPACE_ALLOW` in `arena.sh` copies `README.md`, `case/README.md`, `case/campaign`, `case/dataset/README.md`, `docs/domain.md`, `docs/arena.md` and `docs/adr` to the researcher. Whatever is written there reaches the researcher as a hint, so results of experiments outside the campaign stay in `docs/poc.md` and `results/poc/`, with at most a bare link from those files.
 - `case/metric/metric_config.json` points at the compose hostnames `postgres` and `trino`. Locally, override them with the `SQLTR_*` variables read in `sqltr_metric/config.py`, or pass the global `--local` flag before the subcommand: `python -m sqltr --local run-local ...`.
 
 ## Dev setup (Linux or WSL2)

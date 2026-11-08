@@ -36,7 +36,7 @@ python -m sqltr --local build-references --split-dir data/holdout [--trino]
 python -m sqltr --local self-check --split-dir data/holdout          # на стенде: эквивалентность пар на Trino
 ```
 
-Baseline на holdout (trino2gp, локально): 0 из 12 - SQLGlot оставляет префикс каталога `iceberg.`, который PostgreSQL читает как ссылку на другую базу.
+Baseline на holdout (стенд 8.11): gp2trino 1 из 12, trino2gp 0 из 12. В направлении trino2gp SQLGlot оставляет префикс каталога `iceberg.`, который PostgreSQL читает как ссылку на другую базу. Self-check на стенде: все 12 пар дают равные результаты на двух движках.
 
 ## Размеры и обоснование
 
@@ -56,4 +56,4 @@ UTF-8 JSONL в формате `Example` арены, одна запись на �
 {"id": "tr-gp2trino-daily_sales-1a2b3c4d-v0", "input": "{\"direction\": \"gp2trino\", \"script\": \"...\"}", "reference": "{\"target\": \"trino\", \"states\": [\"s1\", \"s2\", \"s3\", \"s4\"], \"outputs\": {\"wrk.daily_sales_30d\": {\"hashes\": [\"...\"], \"rows\": [57, 55, 49, 3]}}}"}
 ```
 
-`reference` решателю не передается. Public и private хранятся у оценщика вне доступа исследователя; их id непрозрачны (хеш), чтобы не выдавать шаблон. Рядом лежит `meta.jsonl` (шаблон, семейство, классы расхождений) - для train он доступен исследователю, для public и private - только оператору.
+`reference` решателю не передается. Public и private хранятся у оценщика вне доступа исследователя; их id непрозрачны (хеш), чтобы не выдавать шаблон. Рядом лежит `meta.jsonl` (шаблон, семейство, классы расхождений): его видит только оператор, в том числе для train, в workspace исследователя он не входит (ADR 0009).
