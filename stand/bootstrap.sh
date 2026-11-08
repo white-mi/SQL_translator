@@ -55,7 +55,7 @@ fi
 
 if [ "$step" = baseline ]; then
   run python -m pytest -q case/metric/tests
-  run python -m sqltr --local run-local --split-dir data/train --workers 4 --no-cache --out results/baseline/train
+  run python -m sqltr --local run-local --split-dir data/train --workers 2 --no-cache --out results/baseline/train
   cp results/baseline/train/summary.json "$OUT/baseline_summary.json"
 fi
 

@@ -45,13 +45,16 @@ services:
     environment:
       SQLTR_PG_ADMIN_PASSWORD: ${SQLTR_PG_ADMIN_PASSWORD}
     volumes:
+      - ./trino/jvm.config:/etc/trino/jvm.config:ro
       - ./trino/catalog/iceberg.properties:/etc/trino/catalog/iceberg.properties:ro
       - ./trino/access-control.properties:/etc/trino/access-control.properties:ro
       - ./trino/rules.json:/etc/trino/rules.json:ro
       - warehouse:/data/warehouse
     ports:
       - "127.0.0.1:8080:8080"
-    mem_limit: 6g
+    # jvm.config is the image default with the heap at 60% of this limit (2.4 GB) instead of 80%:
+    # measured on the stand, Trino needs about 0.8 GB outside the heap, so at 80% it can reach the limit
+    mem_limit: 4g
     healthcheck:
       test: ["CMD-SHELL", "trino --execute 'SELECT 1' --user sqltr_admin >/dev/null 2>&1"]
       interval: 10s
