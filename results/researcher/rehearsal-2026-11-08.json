@@ -1,0 +1,130 @@
+{
+  "date": "2026-11-08",
+  "provider": "fake (case/researcher/fake_model.py)",
+  "researcher_memory_peak_mib": 180,
+  "note": "scripted run; the memory of a real run is measured separately",
+  "passed": 22,
+  "total": 22,
+  "checks": [
+    {
+      "check": "A01 the scripted researcher finished",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "check": "A02 no request the real API would reject",
+      "passed": true,
+      "detail": "9 requests"
+    },
+    {
+      "check": "A03 model, adaptive thinking and effort as configured",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A04 thinking blocks go back on every step",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A05 prompt cache markers on every request",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A06 the provider sees the operator key, not the client token",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A07 generator, oracles, operator files and Docker socket are hidden",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A08 the provider key is out of the researcher's reach",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A09 no internet from the researcher",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A10 engines and SSH closed to the researcher",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A11 evaluator and gateway open to the researcher",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A12 the gateway refuses another model",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A13 the gateway refuses a call without its token",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "A14 the candidate and its measurement are in the journal, with the campaign's comparison key",
+      "passed": true,
+      "detail": {
+        "conditions_id": "sqltr-metric-v1-runner-1",
+        "dataset_id": "train-20261101-250",
+        "split": "train",
+        "subset_id": "b3cf8aef6287d3827dbd49e99b2b68b0a8a70e8f4a94487219ec4a5006d039da"
+      }
+    },
+    {
+      "check": "A15 search readiness works from inside the container",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "B01 the run survives compression",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "check": "B02 compression fires and goes through the gateway on the same model",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "B03 compression shrinks the conversation",
+      "passed": true,
+      "detail": {
+        "before": 57,
+        "after": 13
+      }
+    },
+    {
+      "check": "B04 at most one rejection, for the edited history, then recovery",
+      "passed": true,
+      "detail": {
+        "rejected": 1
+      }
+    },
+    {
+      "check": "C01 the agent stops at the cap",
+      "passed": true,
+      "detail": 2
+    },
+    {
+      "check": "C02 no call reaches the provider above the cap",
+      "passed": true,
+      "detail": 0
+    },
+    {
+      "check": "C03 it stops at once, without a retry storm",
+      "passed": true,
+      "detail": "8 s"
+    }
+  ]
+}

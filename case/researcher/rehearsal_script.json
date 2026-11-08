@@ -1,0 +1,29 @@
+[
+{
+"command": "python -m evaluator.search --journal \"$ARENA_SEARCH_JOURNAL\" status"
+},
+{
+"command": "echo '--- what the researcher can see'; ls /workspace /workspace/case; for p in /workspace/sqltr /workspace/data/train/instances.jsonl /workspace/operator /etc/sqltr-arena /srv/sqltr-arena /var/run/docker.sock; do [ -e \"$p\" ] && echo \"VISIBLE $p\" || echo \"hidden $p\"; done; echo '--- the provider key is nowhere in reach'; (env; cat /run/secrets/* 2>/dev/null) | grep -c fake-key-for-rehearsal || true; ls /run/secrets"
+},
+{
+"command": "echo '--- network'; for target in https://api.anthropic.com https://pypi.org; do curl -s -m 6 -o /dev/null -w \"$target %{http_code}\\n\" \"$target\" || echo \"$target blocked\"; done; for port in 5432 8080 22; do (timeout 4 bash -c \"</dev/tcp/172.30.0.1/$port\") 2>/dev/null && echo \"host port $port OPEN\" || echo \"host port $port closed\"; done; curl -s -m 5 \"$SQLTR_TRAIN_URL/healthz\" && echo ' train reachable'; curl -s -m 5 \"$SQLTR_MODEL_URL/healthz\" && echo ' gateway reachable'"
+},
+{
+"command": "set -e; mkdir -p /workspace/ways/rehearsal-1 /workspace/runs; cp -r /workspace/case/ways/baseline/. /workspace/ways/rehearsal-1/; python -m evaluator.search --journal \"$ARENA_SEARCH_JOURNAL\" propose --id rehearsal-1 --directory /workspace/ways/rehearsal-1 --hypothesis 'rehearsal: the baseline itself' --change 'none' --tokens 0 --seconds 0"
+},
+{
+"command": "set -e; ids=$(python -c \"import json; rows=[json.loads(l) for l in open('/workspace/data/train/dataset.jsonl')]; print(' '.join('--example-id '+r['id'] for r in rows[:3]+rows[-3:]))\"); python -m evaluator.train submit --url \"$SQLTR_TRAIN_URL\" --token-file /run/secrets/train-token --journal \"$ARENA_SEARCH_JOURNAL\" --candidate rehearsal-1 --measurement rehearsal-1-small --dataset \"$TRAIN_DATASET_ID\" --conditions \"$CONDITIONS_ID\" --train-data /workspace/data/train/dataset.jsonl $ids | tee /workspace/runs/submit.json"
+},
+{
+"command": "set -e; id=$(python -c \"import json; print(json.load(open('/workspace/runs/submit.json'))['evaluation_id'])\"); for i in $(seq 1 60); do status=$(python -m evaluator.train status --url \"$SQLTR_TRAIN_URL\" --token-file /run/secrets/train-token --evaluation-id \"$id\" | python -c \"import json,sys; print(json.load(sys.stdin)['status'])\"); [ \"$status\" != RUNNING ] && break; sleep 5; done; echo \"status $status\"; python -m evaluator.train result --url \"$SQLTR_TRAIN_URL\" --token-file /run/secrets/train-token --journal \"$ARENA_SEARCH_JOURNAL\" --evaluation-id \"$id\" --measurement rehearsal-1-small --output /workspace/runs/rehearsal-1-small.json | python -c \"import json,sys; r=json.load(sys.stdin); print(json.dumps({k: r.get(k) for k in ('status','metrics')}))\""
+},
+{
+"command": "python -m evaluator.search --journal \"$ARENA_SEARCH_JOURNAL\" status; python -m evaluator.client search-readiness --url \"$SQLTR_PRIVATE_URL\" --token-file /run/secrets/private-token --require-campaign --max-solutions \"$MAX_SOLUTIONS\" --finalists \"$FINALISTS\" --output-count \"$OUTPUT_COUNT\" --release-id \"$RELEASE_ID-private\" | cut -c1-300"
+},
+{
+"command": "curl -s -m 10 -H \"x-api-key: $ARENA_MODEL_TOKEN\" -H 'content-type: application/json' -d '{\"model\":\"claude-opus-5-5\",\"max_tokens\":5,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' \"$SQLTR_MODEL_URL/v1/messages\"; echo; curl -s -m 10 -H 'content-type: application/json' -d '{\"model\":\"claude-haiku-5-5\",\"max_tokens\":5,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}' \"$SQLTR_MODEL_URL/v1/messages\"; echo"
+},
+{
+"text": "The scripted rehearsal is complete."
+}
+]
