@@ -1,0 +1,13 @@
+{
+  "upstream": "https://api.anthropic.com",
+  "auth": "x-api-key",
+  "model": "claude-haiku-5-5",
+  "prices_per_mtok": {
+    "input": 0.10,
+    "output": 0.50,
+    "cache_read": 0.01,
+    "cache_write_5m": 0.125,
+    "cache_write_1h": 0.20
+  },
+  "long_prompt": {"tokens": 100000, "multiplier": 5}
+}
