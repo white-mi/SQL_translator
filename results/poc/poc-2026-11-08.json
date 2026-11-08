@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-08",
+  "what": "Proof of concept outside the campaign: separate journal and directory, train only. Candidates do not enter the campaign and are not in this repository. See docs/poc.md.",
+  "researcher": {"model": "claude-haiku-5-5", "harness": "Claude Code subagent", "limit": "3 candidates, tuned on a fixed 100-example subset of train"},
+  "stand": "VM with 2 vCPU and 8 GB RAM, real train evaluator, runner, metric, PostgreSQL 16.4 and Trino 483",
+  "candidates": [
+    {"id": "baseline", "parent": null, "change": "SQLGlot per statement",
+     "subset_100": 0.04, "train_500": 0.064, "train_gp2trino": "3/250", "train_trino2gp": "29/250", "holdout_24": "1/24", "holdout_gp2trino": "1/12", "holdout_trino2gp": "0/12", "train_minutes": 11.1},
+    {"id": "c1", "parent": "baseline", "change": "strip storage clauses before parsing",
+     "subset_100": 0.32, "train_500": 0.288, "train_gp2trino": "59/250", "train_trino2gp": "85/250", "holdout_24": "12/24", "holdout_gp2trino": "4/12", "holdout_trino2gp": "8/12", "train_minutes": 10.7},
+    {"id": "c2", "parent": "c1", "change": "Trino function fixes",
+     "subset_100": 0.37, "train_500": 0.352, "train_gp2trino": "91/250", "train_trino2gp": "85/250", "holdout_24": "12/24", "holdout_gp2trino": "4/12", "holdout_trino2gp": "8/12", "train_minutes": 9.5},
+    {"id": "c3", "parent": "c2", "change": "UPDATE FROM to MERGE for Trino, array functions",
+     "subset_100": 0.43, "train_500": 0.402, "train_gp2trino": "116/250", "train_trino2gp": "85/250", "holdout_24": "13/24", "holdout_gp2trino": "5/12", "holdout_trino2gp": "8/12", "train_minutes": 9.0}
+  ],
+  "c3_train_failures": {"sql_error": 257, "target_dialect_gate": 21, "mismatch": 21},
+  "researcher_cost": {
+    "model_calls": 28,
+    "minutes": 12,
+    "tokens": {"input": 66, "cache_write_5m": 93072, "cache_read": 1897128, "output": 26845},
+    "largest_prompt_tokens": 93074,
+    "usd_at_haiku_5_5_api_prices": 0.044,
+    "usd_per_candidate": 0.015,
+    "note": "Priced from the subagent's transcript, not billed. A lower bound for the campaign: these are the easiest steps, and the campaign runs on Hermes."
+  },
+  "holdout_note": "Only these totals were recorded; per-example failures were not read, so the holdout stays usable for the finalists."
+}

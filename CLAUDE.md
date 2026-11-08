@@ -95,5 +95,6 @@ python case/acceptance/run.py --arena ../arena --work /tmp/sqltr-accept-1 --runn
 - Stand and arena run on the VM (2 vCPU / 8 GB) with real Trino: self-check 250/250 train and 12/12 holdout; arena acceptance 19/19 (`results/acceptance/vm-2026-11-08.json`).
 - Baseline: train gp2trino 0.012, trino2gp 0.116; holdout gp2trino 1/12, trino2gp 0/12.
 - Candidate cost, full train through the arena on that VM (`results/stand/full-train-2026-11-08.json`): 17 minutes for a perfect candidate (score exactly 1.0), 11 for the baseline, 9 for a descendant with unchanged translations. `case/acceptance/full_train.py` repeats the measurement.
-- Researcher route rehearsed end to end with a fake provider (`results/researcher/rehearsal-2026-11-08.json`). No real model call has been made yet.
+- Researcher route rehearsed end to end with a fake provider (`results/researcher/rehearsal-2026-11-08.json`). No real model call has gone through the gateway yet.
+- Proof of concept outside the campaign, with a Haiku subagent as researcher (`docs/poc.md`, `results/poc/`): 0.064 to 0.402 on train in 3 candidates, about $0.015 per candidate. Its candidates stay out of this repository and out of the campaign.
 - Real campaign not started: `freeze`, `data`, `journal` have run only in the rehearsal directory. Next: a model key or quota → `real_check.py` → a capped test of a real researcher → real `freeze` → `data` → `journal` → `workspace` → `start` → campaign (limit ≈ 50, K = 5, N = 3).
