@@ -26,6 +26,8 @@ WORKDIR /opt/arena
 COPY pyproject.toml uv.lock ./
 RUN uv export --frozen --no-dev --no-emit-project -o /tmp/arena-requirements.txt \
     && uv pip install --system --no-deps -r /tmp/arena-requirements.txt && rm /tmp/arena-requirements.txt
+# the runner's SQLGlot, so the researcher can try a translation without spending a measurement
+RUN uv pip install --system sqlglot==30.27.0
 COPY evaluator ./evaluator
 COPY integrations ./integrations
 COPY common ./common
