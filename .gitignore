@@ -18,8 +18,9 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# raw run logs (summaries in results/ are committed)
+# raw run logs (summaries in results/ are committed), local experiments
 results/**/raw/
+results/local/
 data/holdout/
 
 # personal Claude Code instructions (handoff notes, local context)

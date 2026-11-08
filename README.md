@@ -14,7 +14,15 @@
 
 Лимит предложенных решений: ориентир 50, замер на стенде его подтверждает (полный train - 9-17 минут на кандидата, [замер](results/stand/full-train-2026-11-08.json)). Кандидатов в журнале: 0. AUC: -.
 
-Train-цифры получены на VM 8.11 (2 vCPU, 8 ГБ RAM) исполнением на настоящих PostgreSQL и Trino: [сводка](results/baseline/train/summary.json), [материалы стенда](results/stand/). Self-check: все 250 пар train и все 12 пар holdout дают равные результаты на двух движках. На holdout baseline решает gp2trino 1 из 12, trino2gp 0 из 12 ([сводка](results/baseline/holdout/summary.json)).
+Train-цифры получены на VM 8.11 (2 vCPU, 8 ГБ RAM) исполнением на настоящих PostgreSQL и Trino: [сводка](results/baseline/train/summary.json), [материалы стенда](results/stand/). Self-check: все 250 пар train и все 12 пар holdout дают равные результаты на двух движках. На holdout baseline решает gp2trino 1 из 12, trino2gp 0 из 12 ([сводка](results/baseline/holdout/summary.json)). Все замеры с пояснениями - в [results/README.md](results/README.md).
+
+## Статус на 8.11
+
+- **Готово и проверено на VM:** стенд, метрика, данные train, baseline в обоих направлениях, развертывание арены (приемка 19 из 19), стоимость кандидата, образ исследователя и шлюз модели (репетиция 22 из 22, с фальшивым провайдером).
+- **Еще не было:** настоящих вызовов модели через шлюз и кампании: настоящие `freeze`, `data`, `journal` не запускались.
+- **Дальше:** ключ или квота на модель, `case/researcher/real_check.py`, короткая проверка настоящего исследователя с лимитом расходов, затем кампания. Срок старта - 18 ноября.
+
+Проба подхода вне кампании описана в [docs/poc.md](docs/poc.md).
 
 ## Как устроено
 
@@ -63,7 +71,7 @@ python -m sqltr --local load-states --engine postgres
 python -m pytest -q                                   # 73 теста: метрика (включая жульнические решения), генератор, харнес, holdout, шлюз модели
 python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
 python -m sqltr --local build-references --split-dir data/train
-python -m sqltr --local run-local --split-dir data/train --directions trino2gp --no-cache --out results/baseline/train-trino2gp
+python -m sqltr --local run-local --split-dir data/train --directions trino2gp --no-cache --out results/local/train-trino2gp
 ```
 
 На VM (полный стенд, оба направления):
