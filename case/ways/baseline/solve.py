@@ -3,8 +3,9 @@
 Runner contract (non-model harness): stdin {"input": "<json string>", "assets_dir": "/assets", ...},
 stdout {"answer": "<translated script>"}. input = {"direction": "gp2trino"|"trino2gp", "script": "..."}.
 
-The candidate never crashes: any failure falls back to the source statement, so one bad example
-cannot stop an evaluation series (a crash stops the whole closed series in the arena).
+The candidate never crashes: a statement SQLGlot fails on is kept as written, and any other
+failure returns the source script unchanged (or an empty answer if the input cannot be read).
+The runner image turns a crash or timeout of solve.py into an answer that scores 0.
 """
 
 from __future__ import annotations
@@ -13,12 +14,21 @@ import json
 import sys
 from pathlib import Path
 
+# `from sqlsplit import ...` resolves to the file next to solve.py, whatever the cwd or flags
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# direction -> (SQLGlot read dialect, SQLGlot write dialect); Greenplum is handled as "postgres"
 DIALECTS = {"gp2trino": ("postgres", "trino"), "trino2gp": ("trino", "postgres")}
 
 
 def translate_statement(statement: str, read: str, write: str) -> str:
+    """Return one statement transpiled by SQLGlot from dialect `read` to dialect `write`.
+
+    Unsupported-feature checks are off (ErrorLevel.IGNORE), so constructs the target dialect
+    lacks are emitted anyway.
+    Several output statements are joined with semicolons; no output returns `statement`
+    unchanged. SQLGlot errors, such as a parse error, propagate to the caller.
+    """
     import sqlglot
     from sqlglot.errors import ErrorLevel
 
@@ -28,6 +38,12 @@ def translate_statement(statement: str, read: str, write: str) -> str:
 
 
 def translate(script: str, direction: str) -> str:
+    """Return `script` translated for `direction`, one statement at a time.
+
+    The script is split with sqlsplit.split_statements; a statement on which translate_statement
+    raises is kept as written. The parts are joined with ";" and a blank line and end with ";";
+    a script without statements gives "". Raises KeyError for a direction not in DIALECTS.
+    """
     from sqlsplit import split_statements
 
     read, write = DIALECTS[direction]
@@ -41,6 +57,11 @@ def translate(script: str, direction: str) -> str:
 
 
 def main() -> None:
+    """Read the runner payload from stdin and print {"answer": ...} to stdout.
+
+    Any error while reading or translating is swallowed: the answer is then the source script,
+    or "" if the input could not be read.
+    """
     answer = ""
     try:
         payload = json.load(sys.stdin)

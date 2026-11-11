@@ -3,6 +3,10 @@
 The lexer understands single-quoted strings ('' escapes), PostgreSQL escape strings (E'..'),
 dollar-quoted strings ($tag$..$tag$), double-quoted identifiers, line comments and nested block
 comments. Rewrites are applied only to code segments, so string literals are never touched.
+
+engines.py executes the statements of split_statements() one by one; rewrite.py works on
+segments(). case/ways/baseline/sqlsplit.py is a copy for the baseline candidate, so a change
+here does not reach it.
 """
 
 from __future__ import annotations
@@ -15,16 +19,29 @@ _DOLLAR_TAG = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$")
 
 @dataclass(frozen=True)
 class Segment:
+    """One piece of SQL text from segments(): code, a string literal or a comment.
+
+    Attributes:
+        kind: "code", "string" or "comment"; double-quoted identifiers are part of code.
+        text: the exact source text of the piece.
+    """
+
     kind: str  # "code", "string", "comment"
     text: str
 
 
 def segments(sql: str) -> list[Segment]:
+    """Return `sql` cut into code, string and comment segments, in source order.
+
+    Joining the texts gives back `sql` exactly. An unterminated string, dollar quote or block
+    comment runs to the end of the text.
+    """
     out: list[Segment] = []
     buf: list[str] = []
     i, n = 0, len(sql)
 
     def flush() -> None:
+        """Turn the pending code characters into one code segment."""
         if buf:
             out.append(Segment("code", "".join(buf)))
             buf.clear()
@@ -112,9 +129,10 @@ def segments(sql: str) -> list[Segment]:
 
 
 def split_statements(sql: str) -> list[str]:
-    """Split a script into statements on semicolons outside literals and comments.
+    """Split a script into statements on semicolons outside string literals and comments.
 
-    Comment-only fragments are dropped. Comments inside a statement are kept.
+    Statements come back stripped and without their semicolons. Comment-only fragments are
+    dropped; a comment inside a statement or before it is kept with that statement.
     """
     statements: list[str] = []
     current: list[str] = []
@@ -140,10 +158,14 @@ def split_statements(sql: str) -> list[str]:
 
 
 def map_code(sql: str, fn) -> str:
-    """Apply fn to every code segment and return the reassembled text."""
+    """Apply fn (str -> str) to every code segment and return the reassembled text."""
     return "".join(fn(s.text) if s.kind == "code" else s.text for s in segments(sql))
 
 
 def code_only(sql: str) -> str:
-    """Return the text with literals and comments blanked out (same length is not preserved)."""
+    """Return the text with literals and comments blanked out (same length is not preserved).
+
+    Each literal or comment becomes a space and the segments are joined with spaces, so offsets
+    do not match `sql`: use it for searching code, not for rewriting it.
+    """
     return " ".join(s.text if s.kind == "code" else " " for s in segments(sql))
