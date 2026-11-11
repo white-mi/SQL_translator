@@ -223,8 +223,9 @@ class Gateway:
     def over_budget(self) -> bool:
         """Return whether the recorded spend has reached the cap.
 
-        A call counts only once it is recorded, so calls already admitted (running or waiting for
-        a slot) can take the spend past the cap.
+        A call counts only once it is recorded. Handler checks this before a call waits for a slot
+        and again once it has one, so only calls already in flight, at most max_concurrent, can
+        take the spend past the cap.
         """
         with self.lock:
             return self.spent >= self.max_usd
@@ -251,7 +252,8 @@ class Handler(BaseHTTPRequestHandler):
 
     Every path but /healthz needs the client token. Refusals use the Anthropic error shape: 401 wrong
     token, 404 unknown path, 413 body over MAX_BODY_BYTES, 400 body not a JSON object, 403 another
-    model or the cap reached, 502 upstream unreachable. Path matching ignores the query string;
+    model or the cap reached, 502 upstream unreachable or failed before the reply started (a later
+    failure closes the connection mid-reply). Path matching ignores the query string;
     the forwarded path keeps it.
     """
 
@@ -331,17 +333,27 @@ class Handler(BaseHTTPRequestHandler):
             if model != self.gateway.config.model:
                 self.fail(403, "permission_error", f"only {self.gateway.config.model} is allowed in this campaign")
             elif path in MODEL_PATHS and self.gateway.over_budget():
-                # 403, not 429: a client retries a 429 and the researcher would wait for nothing
-                self.fail(403, "permission_error", f"budget of ${self.gateway.max_usd} is spent; the operator decides what next")
+                self.refuse_over_budget()
             else:
                 self.forward("POST", body, billed=path in MODEL_PATHS)
+
+    def refuse_over_budget(self) -> None:
+        """Refuse a billed call because the cap is reached: 403, not 429, so the client does not retry.
+
+        A client retries a 429, and the researcher would wait for money that is not coming.
+        """
+        self.fail(403, "permission_error", f"budget of ${self.gateway.max_usd} is spent; the operator decides what next")
 
     def forward(self, method: str, body: bytes, billed: bool) -> None:
         """Send the request upstream with the operator's key and relay the reply to the client.
 
         Only REQUEST_HEADERS go upstream: the client's token is replaced by the key, and the body is
         passed byte for byte, because rewriting it would break prompt caching. Waits for one of the
-        max_concurrent slots. A failure before any upstream status becomes a 502. A billed call is
+        max_concurrent slots, then checks the cap again: calls that finished during the wait may
+        have spent it, so the cap is overshot only by calls already in flight, at most
+        max_concurrent. If the upstream fails before the client got any part of the reply, the
+        client gets a 502; if it fails later, mid-stream, the connection is closed so the client
+        sees a broken reply at once instead of waiting for its own timeout. A billed call is
         logged exactly once, also when it fails; its cost is 0 unless the status is 200.
 
         Args:
@@ -381,7 +393,11 @@ class Handler(BaseHTTPRequestHandler):
                 "seconds": round(time.monotonic() - started, 2), "usage_complete": usage.seen or status != 200})
 
         with self.gateway.slots:
+            if billed and self.gateway.over_budget():
+                self.refuse_over_budget()  # not logged: it never reached the provider
+                return
             connection = connection_type(target.hostname, target.port, timeout=config.timeout_seconds)
+            self.response_started = False  # set by relay() just before the status line goes out
             try:
                 connection.request(method, target.path.rstrip("/") + self.path, body, headers)
                 response = connection.getresponse()
@@ -389,8 +405,8 @@ class Handler(BaseHTTPRequestHandler):
                 stream = "text/event-stream" in (response.getheader("content-type") or "")
                 self.relay(response, usage, stream, status, record_once)
             except (OSError, http.client.HTTPException) as error:
-                if not status:  # nothing reached the client yet
-                    self.close_connection = True
+                self.close_connection = True  # the reply cannot be completed, so end the connection
+                if not self.response_started:
                     self.fail(502, "api_error", f"upstream unavailable: {type(error).__name__}")
             finally:
                 connection.close()
@@ -403,7 +419,11 @@ class Handler(BaseHTTPRequestHandler):
         chunk by chunk as it arrives and recorded before the terminating chunk. Either way the next
         call of the same client always finds its predecessor counted against the cap. If the client
         goes away mid-stream, the rest is still read to count the usage, then the connection is
-        closed. Only RESPONSE_HEADERS and anthropic-ratelimit-* headers are passed on.
+        closed. Only RESPONSE_HEADERS and anthropic-ratelimit-* headers are passed on. Sets
+        `self.response_started` just before the status line, so `forward` knows whether a 502 can
+        still be sent. Upstream read errors propagate to `forward`, including a stream that ends
+        before its announced content-length (IncompleteRead), so the client never gets a
+        truncated reply that looks complete.
 
         Args:
             response: the upstream http.client.HTTPResponse.
@@ -420,6 +440,7 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     pass
             record_once()
+        self.response_started = True
         self.send_response(status)
         for name, value in response.getheaders():
             if name.lower() in RESPONSE_HEADERS or name.lower().startswith("anthropic-ratelimit-"):
@@ -442,6 +463,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except OSError:
                 client_gone = True
+        if response.length:  # the upstream closed before the content-length it announced
+            raise http.client.IncompleteRead(b"", response.length)
         record_once()
         if client_gone:
             self.close_connection = True

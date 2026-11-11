@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import sys
 import threading
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,7 +32,10 @@ SECRET_TEXT = "the-prompt-must-not-reach-the-log"
 class Upstream:
     """A fake provider: records what it receives and answers with a prepared response.
 
-    Tests change the reply by setting `body`, `content_type` and `status` before posting.
+    Tests change the reply by setting `body`, `content_type` and `status` before posting, make it
+    slow with `delay` (seconds before replying), and make the provider hang up mid-reply with
+    `cut`: "body" announces 100 bytes more than it sends, "stream" sends the body as one chunk of
+    a chunked reply and never ends it; either way the connection is then closed.
     `requests` holds one `{"path", "headers", "body"}` per request received (header names
     lowercased, body as raw bytes); `url` is the base URL; `server.shutdown()` stops it.
     """
@@ -40,6 +46,8 @@ class Upstream:
         self.body = json.dumps({"usage": {"input_tokens": 1000, "output_tokens": 100}, "content": [{"text": "answer"}]}).encode()
         self.content_type = "application/json"
         self.status = 200
+        self.delay = 0.0
+        self.cut: str | None = None
         upstream = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -52,14 +60,23 @@ class Upstream:
                 pass
 
             def do_POST(self):
-                """Record the request, then send the prepared status, content type and body."""
+                """Record the request, wait `delay`, then send the prepared reply (cut if asked)."""
                 body = self.rfile.read(int(self.headers.get("content-length") or 0))
                 upstream.requests.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
+                time.sleep(upstream.delay)
                 self.send_response(upstream.status)
                 self.send_header("content-type", upstream.content_type)
-                self.send_header("content-length", str(len(upstream.body)))
-                self.end_headers()
-                self.wfile.write(upstream.body)
+                if upstream.cut == "stream":
+                    self.send_header("transfer-encoding", "chunked")
+                    self.end_headers()
+                    self.wfile.write(b"%x\r\n%s\r\n" % (len(upstream.body), upstream.body))
+                else:
+                    extra = 100 if upstream.cut == "body" else 0
+                    self.send_header("content-length", str(len(upstream.body) + extra))
+                    self.end_headers()
+                    self.wfile.write(upstream.body)
+                if upstream.cut:
+                    self.close_connection = True
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -74,16 +91,17 @@ def upstream():
     fake.server.shutdown()
 
 
-def start(upstream_url: str, log: Path, max_usd: float = 1.0, auth: str = "x-api-key"):
+def start(upstream_url: str, log: Path, max_usd: float = 1.0, auth: str = "x-api-key", max_concurrent: int = 4):
     """Start a gateway in front of `upstream_url` on a free local port; return `(server, base URL)`.
 
     The gateway serves MODEL at PRICES, accepts CLIENT as the client token, forwards with KEY,
     writes its usage log to `log` and refuses calls once the spend reaches `max_usd`; a call with
-    more than 100,000 prompt tokens costs five times as much. `auth` is "x-api-key" or "bearer".
+    more than 100,000 prompt tokens costs five times as much. `auth` is "x-api-key" or "bearer";
+    `max_concurrent` is the number of upstream calls in flight at once.
     `server.gateway.spent` is the spend so far; the test calls `server.shutdown()`.
     """
     config = gw.Config(upstream=upstream_url, auth=auth, model=MODEL, prices_per_mtok=PRICES,
-                       long_prompt={"tokens": 100000, "multiplier": 5})
+                       long_prompt={"tokens": 100000, "multiplier": 5}, max_concurrent=max_concurrent)
     server = gw.build_server(config, KEY, CLIENT, log, max_usd)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
@@ -243,3 +261,63 @@ def test_empty_key_is_refused(tmp_path):
     config = gw.Config(upstream="http://x", auth="x-api-key", model=MODEL, prices_per_mtok=PRICES)
     with pytest.raises(ValueError):
         gw.Gateway(config, "", None, tmp_path / "log.jsonl", 1.0)
+
+
+def test_a_call_waiting_for_a_slot_is_refused_once_the_cap_is_spent(upstream, tmp_path):
+    """The cap is checked again after the wait for a slot, so the overshoot is at most max_concurrent."""
+    upstream.body = json.dumps({"usage": {"input_tokens": 0, "output_tokens": 200_000}}).encode()  # $0.10 per call
+    upstream.delay = 1.0
+    server, url = start(upstream.url, tmp_path / "log.jsonl", max_usd=0.05, max_concurrent=1)
+    first: list = []
+    caller = threading.Thread(target=lambda: first.append(post(url)[0]))
+    caller.start()
+    deadline = time.monotonic() + 5
+    while not upstream.requests and time.monotonic() < deadline:
+        time.sleep(0.01)
+    status, answer, _ = post(url)  # passes the first check (nothing spent yet), then waits for the slot
+    caller.join()
+    assert first == [200]
+    assert status == 403 and b"budget" in answer
+    assert len(upstream.requests) == 1
+    server.shutdown()
+
+
+def keep_alive_post(url: str) -> http.client.HTTPResponse:
+    """POST a messages request over a keep-alive connection and return the response, unread.
+
+    The researcher's HTTP client keeps connections open. urllib sends `Connection: close`, which
+    makes the gateway close the socket after every reply and so would hide a reply that never
+    ends; http.client keeps the connection open. The socket timeout is 10 seconds.
+    """
+    parts = urllib.parse.urlsplit(url)
+    connection = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
+    connection.request("POST", "/v1/messages", json.dumps({"model": MODEL}).encode(),
+                       {"x-api-key": CLIENT, "content-type": "application/json"})
+    return connection.getresponse()
+
+
+def test_provider_failing_before_the_reply_is_complete_gives_502_at_once(upstream, tmp_path):
+    upstream.cut = "body"
+    server, url = start(upstream.url, tmp_path / "log.jsonl")
+    started = time.monotonic()
+    response = keep_alive_post(url)
+    assert response.status == 502 and b"upstream unavailable" in response.read()
+    assert time.monotonic() - started < 5
+    server.shutdown()
+
+
+def test_provider_failing_mid_stream_closes_the_client_connection(upstream, tmp_path):
+    """The client sees a broken stream at once instead of waiting for more chunks until it times out."""
+    upstream.body = b'event: message_start\ndata: {"type": "message_start", "message": {"usage": {"input_tokens": 1000, "output_tokens": 1}}}\n\n'
+    upstream.content_type = "text/event-stream"
+    upstream.cut = "stream"
+    server, url = start(upstream.url, tmp_path / "log.jsonl")
+    started = time.monotonic()
+    response = keep_alive_post(url)
+    assert response.status == 200
+    with pytest.raises(http.client.IncompleteRead):
+        response.read()
+    assert time.monotonic() - started < 5
+    row = json.loads((tmp_path / "log.jsonl").read_text())
+    assert row["input_tokens"] == 1000  # the part that arrived is still billed
+    server.shutdown()
