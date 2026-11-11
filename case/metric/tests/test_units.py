@@ -1,8 +1,8 @@
 """Unit tests of the metric building blocks (no database needed).
 
 Covers statement splitting, schema isolation, the Greenplum shim, the static write and dialect
-gates, value normalization and table hashing, and the classification of Trino errors (which needs
-the trino package, but no server).
+gates, value normalization and table hashing, and the classification of PostgreSQL and Trino
+errors (the Trino part needs the trino package, but no server).
 """
 
 import datetime as dt
@@ -144,3 +144,18 @@ def test_trino_error_classification():
     assert engine._classify(err("CATALOG_UNAVAILABLE", "USER_ERROR")) == "infra"
     assert engine._classify(err("GENERIC_INTERNAL_ERROR", "INTERNAL_ERROR")) == "infra"
     assert engine._classify(err("ICEBERG_FILESYSTEM_ERROR", "EXTERNAL")) == "infra"
+
+
+def test_postgres_error_classification():
+    """Limits a script hits itself are translation faults; failures of the whole server are infra."""
+    from sqltr_metric.engines import _pg_error_kind
+
+    assert _pg_error_kind("57014", False) == "timeout"  # statement timeout or cancel
+    assert _pg_error_kind("53400", False) == "timeout"  # over the runner's temp_file_limit
+    assert _pg_error_kind("42501", False) == "permission"
+    assert _pg_error_kind("42P01", False) == "sql_error"  # undefined table
+    assert _pg_error_kind("54000", False) == "sql_error"  # program limit, e.g. an oversized array
+    for infra in ("53100", "53200", "53300", "08006", "58030", "XX000"):  # disk, memory, connections
+        assert _pg_error_kind(infra, False) == "infra", infra
+    assert _pg_error_kind("", True) == "infra"
+    assert _pg_error_kind("", False) == "sql_error"

@@ -376,15 +376,22 @@ def load_trino(conn, states: list[str], catalog: str = "iceberg", batch: int = 2
     return counts
 
 
+# Most temporary-file space one runner session may use (sorts, hashes, temp tables). A correct
+# translation of a script over the synthetic states needs a few megabytes; a runaway join stops
+# here with SQLSTATE 53400 and scores 0 instead of filling the server's disk (sqltr_metric.engines).
+RUNNER_TEMP_FILE_LIMIT = "1GB"
+
+
 def setup_postgres_roles(conn, runner_user: str, runner_password: str | None) -> None:
     """Create the unprivileged runner role used to execute translations, and its database grants.
 
     Idempotent: an existing role is kept and its password is not changed. Without
-    `runner_password` the role gets no password (local trust authentication). Also revokes CREATE
-    on schema public from PUBLIC and grants the runner CONNECT and TEMPORARY on the current
-    database; read access to the data comes from `load_postgres`. `conn` must be an autocommit
-    admin connection that may create roles. Callers: `python -m sqltr setup-pg` and the `pg_cfg`
-    test fixture.
+    `runner_password` the role gets no password (local trust authentication). Sets the role's
+    temp_file_limit to RUNNER_TEMP_FILE_LIMIT every time; the metric refuses to run without it.
+    Also revokes CREATE on schema public from PUBLIC and grants the runner CONNECT and TEMPORARY
+    on the current database; read access to the data comes from `load_postgres`. `conn` must be
+    an autocommit superuser connection (temp_file_limit is a superuser setting). Callers:
+    `python -m sqltr setup-pg` and the `pg_cfg` test fixture.
     """
     from psycopg import sql
 
@@ -396,6 +403,8 @@ def setup_postgres_roles(conn, runner_user: str, runner_password: str | None) ->
                     sql.Identifier(runner_user), sql.Literal(runner_password)))
             else:
                 cur.execute(sql.SQL("CREATE ROLE {} LOGIN").format(sql.Identifier(runner_user)))
+        cur.execute(sql.SQL("ALTER ROLE {} SET temp_file_limit = {}").format(
+            sql.Identifier(runner_user), sql.Literal(RUNNER_TEMP_FILE_LIMIT)))
         cur.execute("SELECT current_database()")
         (db,) = cur.fetchone()
         cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA public FROM PUBLIC"))

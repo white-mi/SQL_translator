@@ -81,8 +81,8 @@ def _seed(args, split: str) -> tuple[int, str]:
 def cmd_setup_pg(args) -> None:
     """Create the unprivileged runner role in PostgreSQL (`setup-pg`).
 
-    Needs PostgreSQL reachable as the configured admin user. Idempotent: an existing role keeps its
-    password. Also revokes CREATE on schema public from PUBLIC and grants the runner CONNECT and
+    Needs PostgreSQL reachable as the configured admin user, a superuser. Idempotent: an existing
+    role keeps its password; its temp_file_limit is set every time. Also revokes CREATE on schema public from PUBLIC and grants the runner CONNECT and
     TEMPORARY on the database (`warehouse.setup_postgres_roles`). Run it before load-states, whose
     grants name this role. Prints one confirmation line.
     """

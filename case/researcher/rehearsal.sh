@@ -167,7 +167,7 @@ check("A12 the gateway refuses another model", "only claude-haiku-5-5 is allowed
 check("A13 the gateway refuses a call without its token", "invalid client token" in output)
 check("A14 the candidate and its measurement are in the journal, with the campaign's comparison key",
       len(journal.get("candidates") or []) == 1 and len(journal.get("measurements") or []) == 1
-      and comparison.get("dataset_id") == "train-20261101-250" and comparison.get("conditions_id") == "sqltr-metric-v1-runner-1",
+      and comparison.get("dataset_id") == "train-20261101-250" and comparison.get("conditions_id") == "sqltr-metric-v2-runner-1",
       comparison)
 check("A15 search readiness works from inside the container", '"mode": "campaign"' in output and '"journal_ready": true' in output)
 

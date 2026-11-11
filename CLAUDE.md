@@ -57,7 +57,7 @@ Inside the metric (`case/metric/sqltr_metric/`):
 - `sqltr_metric` lives in `case/metric/`, not at the top level. In a plain checkout it imports only because `sqltr/__init__.py` and `conftest.py` put `case/metric` on `sys.path`; a script that uses it imports `sqltr` first.
 - `case/ways/baseline/sqlsplit.py` is a copy of `case/metric/sqltr_metric/sqltext.py`, because a candidate package must be self-contained; a fix in one does not reach the other. The crash marker `-- sqltr-harness-error:` is defined twice, as `MARKER` in `case/harness/main.py` and `HARNESS_FAULT` in `sqltr_metric/evaluate.py`; change both together. `sqltr/runlocal.py` mirrors the runner protocol but records a crash as `solver_failure` rather than a marker.
 - The metric cache (`sqltr_meta.score_cache` in PostgreSQL) is keyed by `METRIC_VERSION`, example id and answer. While changing the metric before freeze, run with `--no-cache` or `SQLTR_CACHE=0` so each answer is executed again instead of served from the cache.
-- A Trino memory-limit error counts as a translation fault (`engines.py`, `_LIMITS`), so too small a limit gives silent zeros, not a failure. Trino's heap is set in `stand/trino/jvm.config` (60% of `mem_limit`, 2.4 GB; it also needs about 0.8 GB outside the heap). Rerun `self-check` after changing either; `equal` must equal `checked`.
+- A resource limit the script hits itself counts as a translation fault, so too small a limit gives silent zeros, not a failure: on Trino the per-query limits (`engines.py`, `_LIMITS`), on PostgreSQL the runner role's `temp_file_limit` (`RUNNER_TEMP_FILE_LIMIT` in `sqltr/warehouse.py`, SQLSTATE 53400, `_pg_error_kind`). `setup-pg` sets that limit and the metric raises InfraError without it, so after recreating the database run `setup-pg` again. Trino's heap is set in `stand/trino/jvm.config` (60% of `mem_limit`, 2.4 GB; it also needs about 0.8 GB outside the heap). Rerun `self-check` after changing either; `equal` must equal `checked`.
 - Researcher container, each found the hard way by `case/researcher/rehearsal.sh`: the gateway must be named `api.anthropic.com` inside the container (`--add-host`), or Hermes treats it as a relay and drops thinking blocks; the gateway token must start with `sk-ant-api`, or Hermes may take it for OAuth; the arena CLI's packages live in the system Python because the agent's terminal is a login shell that resets `PATH`; everything Hermes needs must be in the image, because the researcher has no internet. Details in `case/researcher/README.md`.
 - `case/researcher/gateway.py` forwards the request body byte for byte: editing it would break prompt caching. Haiku 5.5 charges five times more above 100,000 prompt tokens, which is why `hermes-config.yaml` caps the window there; check `long_prompt` in `model-usage.jsonl`.
 - `arena.sh` evaluator units have fixed names, so a rehearsal and the real campaign cannot run side by side; `rehearsal.sh` refuses once the campaign journal exists.
@@ -79,10 +79,12 @@ python -m sqltr --local setup-pg
 python -m sqltr --local load-states --engine postgres
 python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
 python -m sqltr --local build-references --split-dir data/train
-python -m pytest -q                              # 74 tests
+python -m pytest -q                              # 80 tests
 ```
 
-13 of the 74 tests need that PostgreSQL (the `pg_cfg` fixture in `conftest.py`): all of `case/metric/tests/test_score.py` and one each in `tests/test_generator.py` and `tests/test_holdout.py`. Without a reachable database they are skipped, not failed, so check the skip count. One test: `python -m pytest -q case/metric/tests/test_units.py::test_gp_shim_keeps_cte_with_clause`.
+15 of the 80 tests need that PostgreSQL (the `pg_cfg` fixture in `conftest.py`): all of `case/metric/tests/test_score.py` and one each in `tests/test_generator.py` and `tests/test_holdout.py`. Without a reachable database they are skipped, not failed, so check the skip count. One test: `python -m pytest -q case/metric/tests/test_units.py::test_gp_shim_keeps_cte_with_clause`.
+
+Without Docker, the `pgserver` wheel ships PostgreSQL 16 binaries, enough to run all 80 tests in WSL: install it into a throwaway venv with the project's dependencies, `initdb -D /tmp/pgdata -U sqltr_admin --auth=trust`, `pg_ctl -D /tmp/pgdata -o "-p 55432 -k /tmp" start`, `createdb -h 127.0.0.1 -p 55432 -U sqltr_admin sqltr` (binaries in `site-packages/pgserver/pginstall/bin`), then run pytest with `SQLTR_PG_HOST=127.0.0.1 SQLTR_PG_PORT=55432`.
 
 Full stand with Trino (VM, measured on 2 vCPU / 8 GB): `bash stand/bootstrap.sh`, see `stand/README.md`. Arena deployment: `case/deploy/README.md`.
 

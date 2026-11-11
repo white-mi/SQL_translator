@@ -15,6 +15,8 @@ import pytest
 
 from sqltr.gen.build import build_split
 from sqltr.references import build_references
+from sqltr.warehouse import RUNNER_TEMP_FILE_LIMIT
+from sqltr_metric.engines import InfraError
 from sqltr_metric.evaluate import run_on_states, score_answer
 
 METRIC = Path(__file__).resolve().parent.parent
@@ -153,3 +155,50 @@ def test_metric_is_deterministic(pg_cfg, cases):
     first = _score(pg_cfg, inst, ex, inst.oracle_script)
     second = _score(pg_cfg, inst, ex, inst.oracle_script)
     assert first.score == second.score == 1.0
+
+
+def _set_runner_spill_limit(cfg, value: str | None) -> None:
+    """Set the runner role's temp_file_limit to `value`, or reset it to unlimited when None.
+
+    Runs as the admin user; new runner sessions, which the metric opens for every script, see the
+    change. Tests that call it restore RUNNER_TEMP_FILE_LIMIT in a `finally` block.
+    """
+    import psycopg
+    from psycopg import sql
+
+    pg = cfg.postgres
+    role = sql.Identifier(pg.runner_user)
+    statement = (sql.SQL("ALTER ROLE {} SET temp_file_limit = {}").format(role, sql.Literal(value)) if value
+                 else sql.SQL("ALTER ROLE {} RESET temp_file_limit").format(role))
+    with psycopg.connect(host=pg.host, port=pg.port, dbname=pg.dbname, user=pg.admin_user,
+                         password=pg.admin_password or None, autocommit=True) as conn:
+        conn.execute(statement)
+
+
+def test_runaway_answer_stops_at_the_spill_limit_and_scores_zero(pg_cfg, cases):
+    """Going over temp_file_limit is the answer's fault: score 0, kind "timeout", not an infra failure.
+
+    The limit is lowered to 1MB so a sort of 500,000 rows goes over it within a second.
+    """
+    inst, ex = cases["loyalty"]
+    runaway = (inst.oracle_script + "\nCREATE TABLE wrk.spill AS "
+               "SELECT g FROM generate_series(1, 500000) AS g ORDER BY md5(g::text);")
+    _set_runner_spill_limit(pg_cfg, "1MB")
+    try:
+        result = _score(pg_cfg, inst, ex, runaway)
+    finally:
+        _set_runner_spill_limit(pg_cfg, RUNNER_TEMP_FILE_LIMIT)
+    assert result.score == 0.0
+    assert result.statistics["failure"]["kind"] == "timeout"
+    assert result.statistics["failure"]["error"].startswith("53400")
+
+
+def test_runner_without_a_spill_limit_is_refused_loudly(pg_cfg, cases):
+    """Without temp_file_limit on the runner role the metric raises instead of risking the disk."""
+    inst, ex = cases["loyalty"]
+    _set_runner_spill_limit(pg_cfg, None)
+    try:
+        with pytest.raises(InfraError, match="temp_file_limit"):
+            _score(pg_cfg, inst, ex, inst.oracle_script)
+    finally:
+        _set_runner_spill_limit(pg_cfg, RUNNER_TEMP_FILE_LIMIT)

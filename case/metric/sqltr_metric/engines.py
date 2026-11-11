@@ -3,8 +3,12 @@
 Error policy (one of the key metric rules):
 - an SQL error caused by the script itself (syntax, unknown function, type error, permission
   denied, timeout) is a property of the translation and yields score 0;
-- a failure of the infrastructure (connection refused, engine down, internal storage error)
-  raises InfraError, so the evaluation fails loudly instead of recording a wrong zero.
+- so does a per-script resource limit: Trino's per-query limits (TrinoEngine._LIMITS) and
+  PostgreSQL's temp_file_limit, which `python -m sqltr setup-pg` sets on the runner role
+  (RUNNER_TEMP_FILE_LIMIT in sqltr/warehouse.py), so a runaway answer scores 0 on both engines;
+- a failure of the infrastructure (connection refused, engine down, internal storage error, the
+  whole server out of memory or disk) raises InfraError, so the evaluation fails loudly instead
+  of recording a wrong zero.
 
 Get an engine from make_engine() and close() it when done. evaluate.run_on_states drives each
 run: create_schemas, execute, read_table for every output, drop_schemas.
@@ -61,6 +65,25 @@ class TableData:
 
     columns: list[str]
     rows: list[tuple] = field(default_factory=list)
+
+
+def _pg_error_kind(sqlstate: str, operational: bool) -> str:
+    """Return the kind of a PostgreSQL script error: "timeout", "permission", "sql_error" or "infra".
+
+    The PostgreSQL counterpart of TrinoEngine._classify, used by PostgresEngine.execute. 57014
+    (statement timeout or cancel) and 53400 (configuration_limit_exceeded: the script went over
+    the runner's temp_file_limit) are limits the script hit itself, kind "timeout". 42501 is
+    "permission". The classes 08 (connection), 53 otherwise (the server out of memory, disk or
+    connections), 58 (system) and XX (internal), and an OperationalError without SQLSTATE
+    (`operational` true, `sqlstate` empty), are "infra". Anything else is "sql_error".
+    """
+    if sqlstate in ("57014", "53400"):
+        return "timeout"
+    if sqlstate == "42501":
+        return "permission"
+    if sqlstate[:2] in ("08", "53", "58", "XX") or (operational and not sqlstate):
+        return "infra"
+    return "sql_error"
 
 
 def _short(text: str, limit: int = 600) -> str:
@@ -131,7 +154,9 @@ class PostgresEngine:
 
         The session runs in UTC with statement_timeout = cfg.statement_timeout_s and
         search_path = default_schema, pg_temp. A timer cancels the running statement at
-        `deadline`. The first failing statement ends the script.
+        `deadline`. The first failing statement ends the script. The runner role must have a
+        temp_file_limit (set by `python -m sqltr setup-pg`), so a runaway script stops at its own
+        limit instead of filling the server's disk.
 
         Args:
             script: script with physical schema names (already isolated).
@@ -139,13 +164,14 @@ class PostgresEngine:
             deadline: time.monotonic() value at which the script is stopped as a "timeout".
 
         Returns:
-            ExecOutcome. SQLSTATE 57014 (cancel or statement timeout) gives kind "timeout",
-            42501 "permission", any other script error "sql_error".
+            ExecOutcome with the kind from _pg_error_kind: "timeout" for SQLSTATE 57014 (cancel
+            or statement timeout) and 53400 (over temp_file_limit), "permission" for 42501,
+            "sql_error" for any other script error.
 
         Raises:
-            InfraError: the runner connection fails, or an error has SQLSTATE class 08, 53, 58
-                or XX (connection, resources, system, internal), or is an OperationalError
-                without SQLSTATE.
+            InfraError: the runner connection fails, the runner role has no temp_file_limit, or
+                _pg_error_kind returns "infra" (SQLSTATE class 08, 53 except 53400, 58 or XX, or
+                an OperationalError without SQLSTATE).
         """
         psycopg = self._psycopg
         pg = self.cfg.postgres
@@ -169,6 +195,10 @@ class PostgresEngine:
                     )
                 )
                 cur.execute("SET TIME ZONE 'UTC'")
+                cur.execute("SELECT current_setting('temp_file_limit')")
+                if cur.fetchone()[0] == "-1":
+                    raise InfraError(f"postgres role {pg.runner_user} has no temp_file_limit; "
+                                     "run python -m sqltr setup-pg")
                 cur.execute(
                     psycopg.sql.SQL("SET search_path = {}, pg_temp").format(self._ident(default_schema))
                 )
@@ -180,16 +210,9 @@ class PostgresEngine:
                         cur.execute(stmt.encode())
                     except psycopg.Error as error:
                         state = getattr(error, "sqlstate", None) or ""
-                        if state == "57014":
-                            kind = "timeout"
-                        elif state == "42501":
-                            kind = "permission"
-                        elif state[:2] in ("08", "53", "58", "XX") or (
-                            isinstance(error, psycopg.OperationalError) and not state
-                        ):
+                        kind = _pg_error_kind(state, isinstance(error, psycopg.OperationalError))
+                        if kind == "infra":
                             raise InfraError(f"postgres failure {state}: {_short(error)}") from error
-                        else:
-                            kind = "sql_error"
                         return ExecOutcome(False, kind, f"{state}: {_short(error)}", idx,
                                            len(statements), time.monotonic() - started)
             return ExecOutcome(True, statements=len(statements), seconds=time.monotonic() - started)

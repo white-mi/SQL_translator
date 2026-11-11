@@ -12,4 +12,4 @@ importing `sqltr` first does.
 
 # Recorded in every result's statistics and part of the score-cache key (evaluate.score_answer),
 # so change it whenever the scoring rules change. Matches "version" in metric.json.
-METRIC_VERSION = "sqltr-metric-v1"
+METRIC_VERSION = "sqltr-metric-v2"

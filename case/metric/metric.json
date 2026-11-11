@@ -1,7 +1,7 @@
 {
   "kind": "command",
   "direction": "maximize",
-  "version": "sqltr-metric-v1",
+  "version": "sqltr-metric-v2",
   "command": {
     "argv": ["python", "score.py"],
     "uses_model": false,
