@@ -8,6 +8,7 @@ Course project (ITMO × DeepPavlov "Agentic LLM Systems", assignment B: a skill 
 - Conversation in English. Repository docs (README, `docs/`, ADRs, `case/**/README.md`, `campaign.md`) stay in Russian: the course and the defense are in Russian. Code, comments and commit messages in English.
 - Phrase advice as what to do, not as what to avoid.
 - Small commits; run `python -m pytest -q` before every commit.
+- Every module, class, function and method has a docstring that says what it is and how to use it: parameters and return values whose meaning the name and type hints do not give, side effects, errors, preconditions, the caller. Test functions are exempt; their names state what they check. `tests/test_docstrings.py` enforces this.
 - `docs/repo-map.md` describes every tracked file and who may see it: update it in the same commit that adds, removes or repurposes a file.
 
 ## Hard rules
@@ -61,6 +62,7 @@ Inside the metric (`case/metric/sqltr_metric/`):
 - `case/researcher/gateway.py` forwards the request body byte for byte: editing it would break prompt caching. Haiku 5.5 charges five times more above 100,000 prompt tokens, which is why `hermes-config.yaml` caps the window there; check `long_prompt` in `model-usage.jsonl`.
 - `arena.sh` evaluator units have fixed names, so a rehearsal and the real campaign cannot run side by side; `rehearsal.sh` refuses once the campaign journal exists.
 - `WORKSPACE_ALLOW` in `arena.sh` copies `README.md`, `case/README.md`, `case/campaign`, `case/dataset/README.md`, `docs/domain.md`, `docs/arena.md` and `docs/adr` to the researcher. Whatever is written there reaches the researcher as a hint, so results of experiments outside the campaign stay in `docs/poc.md` and `results/poc/`, with at most a bare link from those files.
+- The `pg_cfg` test fixture reloads the data states: it drops and recreates `retail_s1`–`retail_s4` in whatever PostgreSQL it reaches. On the VM, run `pytest` only while no evaluator is scoring; an answer executed during the reload fails with a missing table and scores 0 as a translation fault, not as an infrastructure error.
 - `case/metric/metric_config.json` points at the compose hostnames `postgres` and `trino`. Locally, override them with the `SQLTR_*` variables read in `sqltr_metric/config.py`, or pass the global `--local` flag before the subcommand: `python -m sqltr --local run-local ...`.
 
 ## Dev setup (Linux or WSL2)
@@ -77,10 +79,10 @@ python -m sqltr --local setup-pg
 python -m sqltr --local load-states --engine postgres
 python -m sqltr build-dataset --split train --families 250 --seed 20261101 --out data/train
 python -m sqltr --local build-references --split-dir data/train
-python -m pytest -q                              # 73 tests
+python -m pytest -q                              # 74 tests
 ```
 
-13 of the 73 tests need that PostgreSQL (the `pg_cfg` fixture in `conftest.py`): all of `case/metric/tests/test_score.py` and one each in `tests/test_generator.py` and `tests/test_holdout.py`. Without a reachable database they are skipped, not failed, so check the skip count. One test: `python -m pytest -q case/metric/tests/test_units.py::test_gp_shim_keeps_cte_with_clause`.
+13 of the 74 tests need that PostgreSQL (the `pg_cfg` fixture in `conftest.py`): all of `case/metric/tests/test_score.py` and one each in `tests/test_generator.py` and `tests/test_holdout.py`. Without a reachable database they are skipped, not failed, so check the skip count. One test: `python -m pytest -q case/metric/tests/test_units.py::test_gp_shim_keeps_cte_with_clause`.
 
 Full stand with Trino (VM, measured on 2 vCPU / 8 GB): `bash stand/bootstrap.sh`, see `stand/README.md`. Arena deployment: `case/deploy/README.md`.
 
