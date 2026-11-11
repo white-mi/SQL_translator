@@ -8,6 +8,7 @@ Course project (ITMO × DeepPavlov "Agentic LLM Systems", assignment B: a skill 
 - Conversation in English. Repository docs (README, `docs/`, ADRs, `case/**/README.md`, `campaign.md`) stay in Russian: the course and the defense are in Russian. Code, comments and commit messages in English.
 - Phrase advice as what to do, not as what to avoid.
 - Small commits; run `python -m pytest -q` before every commit.
+- `docs/repo-map.md` describes every tracked file and who may see it: update it in the same commit that adds, removes or repurposes a file.
 
 ## Hard rules
 

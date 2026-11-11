@@ -41,6 +41,8 @@ flowchart LR
 
 ## Структура
 
+Подробно, файл за файлом и с пометкой, что видит исследователь, - в [docs/repo-map.md](docs/repo-map.md).
+
 ```
 case/                  кейс арены
   metric/              пакет метрики: metric.json, score.py, sqltr_metric/, тесты
