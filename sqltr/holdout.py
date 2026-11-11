@@ -1,14 +1,22 @@
 """Out-of-search validation set: hand-written script pairs outside the generator's 14 templates.
 
-Purpose: check that what the search grows transfers beyond the generator. These scripts are never
-given to the researcher and never used during the search; they are scored once for the baseline
-before the campaign and once for the finalists after it (docs/adr/0003-dataset-split.md).
+Purpose: check that what the search grows transfers beyond the generator. Operator only: this
+module and the scripts never enter the researcher workspace and are never used during the search
+(docs/adr/0009-researcher-workspace.md); the operator scores the baseline before the campaign and
+the finalists after it (docs/adr/0003-dataset-split.md).
 
 Each pair is written by hand to be semantically equal on all four data states; the Trino twin is
 checked on the stand by `python -m sqltr self-check --split-dir data/holdout` (GP on PostgreSQL vs
-Trino on Trino). Constructs deliberately absent from the templates: self-joins, ROLLUP/grouping(),
-calendar zero-fill with window frames, DISTINCT ON, USING joins, CASE banding with JSON numbers,
-DELETE ... USING, regex predicates, DESC ordering over NULLs, epoch arithmetic, FILTER vs count_if.
+Trino on Trino). Constructs the templates never emit: self-joins, ROLLUP/grouping(), window frames
+(ROWS BETWEEN), JOIN ... USING, date_trunc('week'), numbers read from JSON, count_if. Constructs
+the templates do emit, here in new combinations: calendar zero-fill, DISTINCT ON in ascending
+order, DELETE ... USING with extra predicates, regex inside FILTER, DESC inside rank(), epoch
+arithmetic in seconds.
+
+`HOLDOUT` holds one dict per pair: `name`, `features` (tags of its own, not `R` feature tags),
+`outputs` (logical output tables) and the two scripts under `gp` and `trino`.
+`python -m sqltr build-holdout --out data/holdout` writes `holdout_instances()` to
+`instances.jsonl`.
 """
 
 from __future__ import annotations
@@ -433,6 +441,13 @@ GROUP BY p.method;
 
 
 def holdout_instances() -> list[Instance]:
+    """Return every `HOLDOUT` pair as two instances, gp2trino then trino2gp, in list order.
+
+    The two share the scripts with source and oracle swapped. Fields the generator would fill are
+    fixed: id `ho-<direction>-<name>`, split "holdout", family `holdout-<name>`, template
+    `holdout:<name>`, variant 0, empty params and style. Called by `python -m sqltr build-holdout`;
+    the result contains the oracle translations, so it stays with the operator.
+    """
     instances = []
     for item in HOLDOUT:
         for direction, (src, dst) in (("gp2trino", ("gp", "trino")), ("trino2gp", ("trino", "gp"))):
