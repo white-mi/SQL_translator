@@ -1,4 +1,9 @@
-"""Generator properties: determinism, disjoint splits, executable Greenplum renderings."""
+"""Generator properties: determinism, disjoint splits, executable Greenplum renderings.
+
+Also: a family keeps all its variants and both directions in one split, public ids do not reveal
+the template, and paired renderings name the same output tables. Only the execution test needs
+PostgreSQL (`pg_cfg`).
+"""
 
 import random
 

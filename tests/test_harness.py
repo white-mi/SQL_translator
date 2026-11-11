@@ -1,4 +1,8 @@
-"""Harness adapter: candidate faults become a marked answer; evaluator-side faults stay loud."""
+"""Harness adapter: candidate faults become a marked answer; evaluator-side faults stay loud.
+
+test_metric_scores_marked_answer_zero_with_diagnostics checks the other end: the metric scores a
+marked answer 0 and keeps the diagnostics.
+"""
 
 import importlib.util
 import io
@@ -13,6 +17,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture()
 def harness(tmp_path, monkeypatch):
+    """Load a fresh case/harness/main.py with its candidate directory in tmp_path and a 5 s timeout.
+
+    The adapter starts solve.py with cwd /tmp, so the tests that run a candidate need Linux or WSL.
+
+    Returns:
+        `(module, run)`: the loaded adapter module (for MARKER) and `run`, which calls its `main`.
+    """
     spec = importlib.util.spec_from_file_location("sqltr_harness_main", ROOT / "case/harness/main.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -22,6 +33,16 @@ def harness(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "SOLVE_TIMEOUT", 5.0)
 
     def run(solve_source: str | None, task: dict | str) -> tuple[int, dict | None]:
+        """Call the adapter's `main` once with `task` on stdin; return `(exit code, parsed stdout)`.
+
+        Args:
+            solve_source: source to write as the candidate's solve.py; None leaves the file as it
+                is (missing unless an earlier call wrote it).
+            task: a dict is sent as JSON, a string verbatim.
+
+        Returns:
+            The exit code of `main` and its stdout parsed as JSON, or None if it printed nothing.
+        """
         if solve_source is not None:
             (candidate / "solve.py").write_text(solve_source)
         raw = task if isinstance(task, str) else json.dumps(task)
@@ -73,6 +94,7 @@ def test_crash_detail_carries_stderr_tail(harness):
     {"input": 5, "uses_model": False},
 ])
 def test_invalid_tasks_fail_loudly(harness, task):
+    """Not JSON, a model task, a non-solve operation, a non-string input: exit 1, no output."""
     _, run = harness
     code, out = run("print('{\"answer\": \"x\"}')\n", task)
     assert code == 1 and out is None

@@ -1,4 +1,9 @@
-"""Unit tests of the metric building blocks (no database needed)."""
+"""Unit tests of the metric building blocks (no database needed).
+
+Covers statement splitting, schema isolation, the Greenplum shim, the static write and dialect
+gates, value normalization and table hashing, and the classification of Trino errors (which needs
+the trino package, but no server).
+"""
 
 import datetime as dt
 from decimal import Decimal
@@ -114,6 +119,11 @@ def test_table_hash_is_a_multiset():
 # ------------------------------------------------------------------ Trino error classification
 
 def test_trino_error_classification():
+    """Trino errors map to translation faults (sql_error, permission, timeout) or to infra.
+
+    The engine is created without `__init__`, which would connect to Trino: `_classify` needs only
+    the trino exceptions module in `_exc`.
+    """
     import trino.exceptions as exc
 
     from sqltr_metric.engines import TrinoEngine
@@ -122,6 +132,7 @@ def test_trino_error_classification():
     engine._exc = exc
 
     def err(name, etype):
+        """Return a TrinoQueryError with the given errorName and errorType."""
         return exc.TrinoQueryError({"errorName": name, "errorType": etype, "message": name})
 
     assert engine._classify(err("SYNTAX_ERROR", "USER_ERROR")) == "sql_error"

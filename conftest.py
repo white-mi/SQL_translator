@@ -1,3 +1,13 @@
+"""Pytest setup shared by tests/ and case/metric/tests/.
+
+Puts the repository root and case/metric at the front of sys.path, so `sqltr` and `sqltr_metric`
+import from a plain checkout without installing the package.
+
+Tests that need PostgreSQL take the session fixture `pg_cfg`. When the database is not reachable,
+those tests are skipped, not failed: a green run without PostgreSQL has not run them, so check the
+skip count.
+"""
+
 import os
 import sys
 from pathlib import Path
@@ -12,6 +22,10 @@ for path in (METRIC, ROOT):
 
 
 def _pg_available(cfg) -> bool:
+    """Return True if the admin user connects to the configured PostgreSQL within 3 seconds.
+
+    Any error, including a missing psycopg, gives False.
+    """
     try:
         import psycopg
 
@@ -25,7 +39,15 @@ def _pg_available(cfg) -> bool:
 
 @pytest.fixture(scope="session")
 def pg_cfg():
-    """Metric config pointing at a PostgreSQL with loaded data states (local dev or the VM stand)."""
+    """Return a metric config pointing at a PostgreSQL with the data states loaded.
+
+    Session-scoped. The host defaults to 127.0.0.1: the fixture sets `SQLTR_PG_HOST` in this
+    process's environment when it is unset, so later subprocesses inherit it; everything else comes
+    from metric_config.json and the `SQLTR_*` variables. The metric cache is off. If the admin
+    connection fails, every test that uses the fixture is skipped. Otherwise it creates the runner
+    role and reloads the states, which drops and recreates the retail_<state> schemas of that
+    database (local dev or the VM stand).
+    """
     from sqltr_metric import config
 
     os.environ.setdefault("SQLTR_PG_HOST", "127.0.0.1")

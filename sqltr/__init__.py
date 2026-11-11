@@ -1,4 +1,12 @@
-"""SQLTR: dataset generator, reference builder and local runner for the SQL translation case."""
+"""SQLTR: dataset generator, reference builder and local runner for the SQL translation case.
+
+Run it as `python -m sqltr <command>` (see `sqltr/__main__.py`). Importing the package puts
+`case/metric` on `sys.path`, so `sqltr_metric` imports from a plain checkout; a script that
+uses `sqltr_metric` imports `sqltr` first.
+
+`AS_OF` is the fixed "today" of the synthetic warehouse as an SQL date string: the templates in
+`sqltr/gen` use it instead of `now()`. It must stay equal to `warehouse.AS_OF`.
+"""
 
 import sys
 from pathlib import Path

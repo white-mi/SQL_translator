@@ -21,11 +21,24 @@ ADAPTIVE = {"thinking": {"type": "adaptive"}, "output_config": {"effort": "max"}
 
 
 def request(**fields) -> dict:
+    """Return a request body that Haiku 5.5 accepts, with `fields` replacing its top-level keys.
+
+    The base has the model, max_tokens 1000, a system prompt, one tool, one user message, adaptive
+    thinking and effort max.
+    """
     return {"model": MODEL, "max_tokens": 1000, "system": SYSTEM, "tools": TOOLS, "messages": [USER], **ADAPTIVE, **fields}
 
 
 def tool_loop(first_message: dict = USER, system=SYSTEM, signature: str | None = None) -> dict:
-    """A second request: the assistant called a tool, the result comes back."""
+    """Return a tool loop's second request: the assistant called a tool, and its result follows.
+
+    Args:
+        first_message: the user message that opens the conversation.
+        system: the system prompt of this second request.
+        signature: the thinking block's signature. By default it is the fake's valid signature for
+            the default opening (USER with SYSTEM and TOOLS), so a different `first_message` or
+            `system` models an edited history, unless the fake treats the two as the same.
+    """
     opening = request()
     signed = signature or fake.conversation_digest(opening, 1)
     return request(system=system, messages=[

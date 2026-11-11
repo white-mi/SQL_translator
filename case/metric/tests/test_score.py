@@ -22,7 +22,13 @@ METRIC = Path(__file__).resolve().parent.parent
 
 @pytest.fixture(scope="module")
 def cases(pg_cfg):
-    """A few trino2gp instances with references, keyed by template."""
+    """Return one trino2gp case per template: `{template: (instance, arena example)}`.
+
+    Builds 40 dev families with seed 7 and their references in paired mode on PostgreSQL
+    (`trino=False`), and asserts that none was skipped. Tests pick cases by template name ("tags",
+    "loyalty", "stock_alerts"), so a change of seed, family count or template sampling that drops
+    one of those templates fails them with KeyError.
+    """
     instances = [i for i in build_split("dev", 40, seed=7) if i.direction == "trino2gp"]
     examples, meta, report = build_references(instances, pg_cfg, trino=False)
     assert not report.skipped
@@ -35,6 +41,7 @@ def cases(pg_cfg):
 
 
 def _score(cfg, inst, ex, answer):
+    """Score `answer` against the reference of the arena example `ex`; `inst` is unused."""
     return score_answer(ex["id"], json.loads(ex["input"]), json.loads(ex["reference"]), answer, cfg)
 
 
@@ -69,6 +76,7 @@ def test_hardcoded_results_fail_on_other_states(pg_cfg, cases):
         cols = [d.name for d in cur.description]
 
     def lit(v):
+        """Render a value as an SQL literal for the cheating INSERT (strings are not escaped)."""
         return "NULL" if v is None else (f"'{v}'" if isinstance(v, str) else str(v))
 
     values = ", ".join("(" + ", ".join(lit(v) for v in row) + ")" for row in rows)

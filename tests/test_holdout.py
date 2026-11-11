@@ -1,4 +1,8 @@
-"""Out-of-search validation pairs: well-formed, disjoint from the generator, GP twins execute."""
+"""Out-of-search validation pairs: well-formed, disjoint from the generator, GP twins execute.
+
+"Disjoint" means no holdout pair reuses a generator template name; the execution test needs
+PostgreSQL (`pg_cfg`).
+"""
 
 from sqltr.gen.templates import BY_NAME
 from sqltr.holdout import HOLDOUT, holdout_instances

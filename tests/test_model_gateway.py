@@ -27,9 +27,15 @@ SECRET_TEXT = "the-prompt-must-not-reach-the-log"
 
 
 class Upstream:
-    """A fake provider: records what it receives and answers with a prepared response."""
+    """A fake provider: records what it receives and answers with a prepared response.
+
+    Tests change the reply by setting `body`, `content_type` and `status` before posting.
+    `requests` holds one `{"path", "headers", "body"}` per request received (header names
+    lowercased, body as raw bytes); `url` is the base URL; `server.shutdown()` stops it.
+    """
 
     def __init__(self):
+        """Serve on a free local port; the default reply reports 1000 input, 100 output tokens."""
         self.requests: list[dict] = []
         self.body = json.dumps({"usage": {"input_tokens": 1000, "output_tokens": 100}, "content": [{"text": "answer"}]}).encode()
         self.content_type = "application/json"
@@ -37,12 +43,16 @@ class Upstream:
         upstream = self
 
         class Handler(BaseHTTPRequestHandler):
+            """Request handler that records into and replies from this Upstream."""
+
             protocol_version = "HTTP/1.1"
 
             def log_message(self, *_args):
+                """Silence the per-request access log."""
                 pass
 
             def do_POST(self):
+                """Record the request, then send the prepared status, content type and body."""
                 body = self.rfile.read(int(self.headers.get("content-length") or 0))
                 upstream.requests.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
                 self.send_response(upstream.status)
@@ -58,12 +68,20 @@ class Upstream:
 
 @pytest.fixture
 def upstream():
+    """Yield a running Upstream and shut it down after the test."""
     fake = Upstream()
     yield fake
     fake.server.shutdown()
 
 
 def start(upstream_url: str, log: Path, max_usd: float = 1.0, auth: str = "x-api-key"):
+    """Start a gateway in front of `upstream_url` on a free local port; return `(server, base URL)`.
+
+    The gateway serves MODEL at PRICES, accepts CLIENT as the client token, forwards with KEY,
+    writes its usage log to `log` and refuses calls once the spend reaches `max_usd`; a call with
+    more than 100,000 prompt tokens costs five times as much. `auth` is "x-api-key" or "bearer".
+    `server.gateway.spent` is the spend so far; the test calls `server.shutdown()`.
+    """
     config = gw.Config(upstream=upstream_url, auth=auth, model=MODEL, prices_per_mtok=PRICES,
                        long_prompt={"tokens": 100000, "multiplier": 5})
     server = gw.build_server(config, KEY, CLIENT, log, max_usd)
@@ -72,6 +90,16 @@ def start(upstream_url: str, log: Path, max_usd: float = 1.0, auth: str = "x-api
 
 
 def post(url: str, payload: dict | None = None, token: str | None = CLIENT, path: str = "/v1/messages"):
+    """POST a JSON request to the gateway; return `(status, response body, request body sent)`.
+
+    Args:
+        payload: the request JSON; None sends a messages request for MODEL whose prompt is
+            SECRET_TEXT.
+        token: client token sent as x-api-key; None sends no token.
+        path: request path on the gateway.
+
+    HTTP error statuses are returned, not raised.
+    """
     body = json.dumps(payload if payload is not None else {"model": MODEL, "messages": [{"role": "user", "content": SECRET_TEXT}]}).encode()
     headers = {"content-type": "application/json", "anthropic-version": "2023-06-01"}
     if token:

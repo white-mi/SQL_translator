@@ -49,6 +49,20 @@ TABLES: dict[str, list[tuple[str, str]]] = {
 
 @dataclass(frozen=True)
 class StateSpec:
+    """Recipe of one data state: its random seed, table sizes and the edge cases it injects.
+
+    Attributes:
+        seed: seed of the state's random generator; the same spec always gives the same data.
+        customers, products, orders: rows generated in those tables (stores are always 12).
+        nulls: probability that a value of a nullable column is NULL; non-zero also lets
+            discounts be NULL.
+        cyrillic: share of customers with Cyrillic names and cities.
+        ties: create ties: a timestamp shared by some orders, prices of 499.00, payments of 1000.00.
+        edge_dates: draw 30% of dates and timestamps from EDGE_DATES and EDGE_TS.
+        big_numbers: allow some prices up to 99999 and some quantities up to 500.
+        empty: tables left empty.
+    """
+
     seed: int
     customers: int
     products: int
@@ -101,14 +115,20 @@ EDGE_DATES = [dt.date(2024, 2, 29), dt.date(2025, 12, 31), dt.date(2026, 1, 1), 
 
 
 def _maybe_null(r: random.Random, spec: StateSpec, value):
+    """Return None with probability `spec.nulls`, else `value`; draws a number only if nulls > 0."""
     return None if spec.nulls and r.random() < spec.nulls else value
 
 
 def _money(r: random.Random, lo: float, hi: float) -> Decimal:
+    """Return a random amount between lo and hi, rounded to cents."""
     return Decimal(f"{r.uniform(lo, hi):.2f}")
 
 
 def _rand_ts(r: random.Random, spec: StateSpec) -> dt.datetime:
+    """Return a random timestamp from ORDERS_FROM to the last second of AS_OF.
+
+    With `spec.edge_dates`, 30% of the draws are an EDGE_TS value instead.
+    """
     if spec.edge_dates and r.random() < 0.3:
         return r.choice(EDGE_TS)
     span = int((dt.datetime.combine(AS_OF, dt.time(23, 59, 59)) - ORDERS_FROM).total_seconds())
@@ -116,12 +136,25 @@ def _rand_ts(r: random.Random, spec: StateSpec) -> dt.datetime:
 
 
 def _rand_date(r: random.Random, lo: dt.date, hi: dt.date, spec: StateSpec) -> dt.date:
+    """Return a random date from lo to hi inclusive.
+
+    With `spec.edge_dates`, 30% of the draws are an EDGE_DATES value instead, which may fall
+    outside [lo, hi] (in s3: birth dates in 2024-2026, store openings in 2026).
+    """
     if spec.edge_dates and r.random() < 0.3:
         return r.choice(EDGE_DATES)
     return lo + dt.timedelta(days=r.randrange((hi - lo).days + 1))
 
 
 def generate_state(name: str) -> dict[str, list[tuple]]:
+    """Generate the rows of every table for the state `name`, a key of STATES.
+
+    Deterministic: the state's seed fixes the data, so `load_postgres` and `load_trino`, which call
+    this separately, load identical copies. Changing the order or number of random draws here
+    changes the data of the state, and with it every reference hash. Returns table name -> rows,
+    each row a tuple in TABLES column order with Python values (int, str, Decimal, date,
+    datetime, bool or None); tables in `spec.empty` are empty lists.
+    """
     spec = STATES[name]
     r = random.Random(spec.seed)
     data: dict[str, list[tuple]] = {}
@@ -219,6 +252,11 @@ def generate_state(name: str) -> dict[str, list[tuple]]:
 
 
 def ddl(engine: str, schema: str, table: str, catalog: str = "iceberg") -> str:
+    """Return the CREATE TABLE statement of a warehouse table for one engine.
+
+    `engine` "postgres" gives PostgreSQL types and `schema.table`; any other value gives the
+    Trino/Iceberg form `catalog.schema.table` stored as Parquet.
+    """
     idx = 0 if engine == "postgres" else 1
     cols = ", ".join(f"{c} {TYPES[t][idx]}" for c, t in TABLES[table])
     if engine == "postgres":
@@ -227,6 +265,11 @@ def ddl(engine: str, schema: str, table: str, catalog: str = "iceberg") -> str:
 
 
 def trino_literal(value, logical: str) -> str:
+    """Render a Python value as a Trino SQL literal of the logical type `logical` (a key of TYPES).
+
+    Used by `load_trino` to build INSERT ... VALUES; None becomes NULL, and text is single-quoted
+    with quotes doubled.
+    """
     if value is None:
         return "NULL"
     if logical in ("int", "bigint"):
@@ -246,7 +289,21 @@ def trino_literal(value, logical: str) -> str:
 
 
 def load_postgres(conn, states: list[str], runner_user: str) -> dict[str, dict[str, int]]:
-    """Create retail_<state> schemas with data; grant read access to the runner role."""
+    """Create the retail_<state> schemas in PostgreSQL with data; grant read access to the runner.
+
+    Destructive: each schema is dropped with CASCADE and recreated, then filled with COPY. The
+    runner role gets USAGE on the schema and SELECT on its tables, so it must exist already
+    (`setup_postgres_roles`). Callers: `python -m sqltr load-states` and the `pg_cfg` test fixture.
+
+    Args:
+        conn: psycopg connection as an admin that may create schemas, in autocommit mode: the
+            function never commits.
+        states: state names, keys of STATES.
+        runner_user: the role that executes translations.
+
+    Returns:
+        Row counts, `{state: {table: rows}}`.
+    """
     from psycopg import sql
 
     counts: dict[str, dict[str, int]] = {}
@@ -274,10 +331,26 @@ def load_postgres(conn, states: list[str], runner_user: str) -> dict[str, dict[s
 
 
 def load_trino(conn, states: list[str], catalog: str = "iceberg", batch: int = 250) -> dict[str, dict[str, int]]:
+    """Create the retail_<state> schemas in a Trino catalog with the same data as `load_postgres`.
+
+    Destructive: an existing schema loses its tables one by one and is then dropped and recreated.
+    Rows go in as `INSERT ... VALUES` literals (`trino_literal`), `batch` rows per statement.
+    Unlike `load_postgres`, it grants nothing. Caller: `python -m sqltr load-states`.
+
+    Args:
+        conn: Trino DB-API connection (`trino.dbapi.connect`) as the admin user.
+        states: state names, keys of STATES.
+        catalog: the Iceberg catalog that holds the schemas.
+        batch: rows per INSERT statement.
+
+    Returns:
+        Row counts, `{state: {table: rows}}`.
+    """
     counts: dict[str, dict[str, int]] = {}
     cur = conn.cursor()
 
     def run(statement: str):
+        """Execute one statement and return all its rows; fetching waits for it to finish."""
         cur.execute(statement)
         return cur.fetchall()
 
@@ -304,7 +377,15 @@ def load_trino(conn, states: list[str], catalog: str = "iceberg", batch: int = 2
 
 
 def setup_postgres_roles(conn, runner_user: str, runner_password: str | None) -> None:
-    """Create the unprivileged runner role used to execute translations."""
+    """Create the unprivileged runner role used to execute translations, and its database grants.
+
+    Idempotent: an existing role is kept and its password is not changed. Without
+    `runner_password` the role gets no password (local trust authentication). Also revokes CREATE
+    on schema public from PUBLIC and grants the runner CONNECT and TEMPORARY on the current
+    database; read access to the data comes from `load_postgres`. `conn` must be an autocommit
+    admin connection that may create roles. Callers: `python -m sqltr setup-pg` and the `pg_cfg`
+    test fixture.
+    """
     from psycopg import sql
 
     with conn.cursor() as cur:
