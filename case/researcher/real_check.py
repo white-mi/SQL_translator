@@ -9,7 +9,15 @@ The rehearsal with the fake provider checks the plumbing. This answers the quest
 
 The script never sees the provider key: it calls the gateway with the client token, like the researcher.
 
-    python3 case/researcher/real_check.py --url http://172.30.0.1:18094 --token-file <root>/secrets/model-token
+Needs a gateway running with the real key (`arena.sh gateway`). The token file belongs to the arena
+user with mode 0600, hence sudo. The port is the settings' GATEWAY_PORT: 8094 in the campaign,
+18094 in the rehearsal root.
+
+    sudo python3 case/researcher/real_check.py --url http://172.30.0.1:18094 --token-file <root>/secrets/model-token
+
+Makes eight calls (five if the model does not call the tool), prints one JSON summary per call and
+the gateway's /healthz status at the end; --report also writes them to a JSON file. Exit code 0 if
+the plain call with Hermes's betas returned 200, else 1; the other answers are for the operator to read.
 """
 
 from __future__ import annotations
@@ -30,10 +38,30 @@ LONG_SYSTEM = "You answer questions about a retail warehouse. " + " ".join(
 
 
 class Client:
+    """Minimal Messages API client that calls the gateway the way Hermes does.
+
+    It sends the client token as x-api-key, an anthropic-beta header, adaptive thinking and an
+    effort level, and never streams.
+    """
+
     def __init__(self, url: str, token: str, model: str, betas: str | None):
+        """Remember the gateway base URL, the client token, the model and the default anthropic-beta.
+
+        `betas` None or "" sends no anthropic-beta header by default.
+        """
         self.url, self.token, self.model, self.betas = url.rstrip("/"), token, model, betas
 
     def call(self, messages: list, *, tools: list | None = None, system=None, effort: str = "low", betas: str | None = None) -> tuple[int, dict]:
+        """Send one /v1/messages request and return (HTTP status, parsed JSON body).
+
+        Thinking is always adaptive and max_tokens 2000. An HTTP error comes back the same way, with
+        {} when its body is not JSON; network failures raise.
+
+        Args:
+            system: the system prompt, a string or a list of blocks; omitted when empty.
+            effort: output_config.effort.
+            betas: anthropic-beta for this call; None uses the client's default, "" sends none.
+        """
         body = {"model": self.model, "max_tokens": 2000, "messages": messages,
                 "thinking": {"type": "adaptive"}, "output_config": {"effort": effort}}
         if tools:
@@ -55,11 +83,17 @@ class Client:
                 return error.code, {}
 
     def status(self) -> dict:
+        """Return the gateway's GET /healthz summary: model, spend, cap and call counts."""
         with urllib.request.urlopen(self.url + "/healthz", timeout=20) as response:
             return json.loads(response.read())
 
 
 def describe(status: int, payload: dict) -> dict:
+    """Return the summary of one call that is printed and reported.
+
+    Status, stop reason, content block types, token counts (input, output, cache read and write)
+    and the first 300 characters of any error message.
+    """
     usage = payload.get("usage") or {}
     return {"status": status, "stop_reason": payload.get("stop_reason"),
             "blocks": [b.get("type") for b in payload.get("content") or []],
@@ -69,6 +103,11 @@ def describe(status: int, payload: dict) -> dict:
 
 
 def main() -> int:
+    """Run the checks in order, print each summary and the gateway status, write --report if given.
+
+    The tool loop checks reuse the first tool call's reply and are skipped when the model does not
+    call the tool. Returns 0 if the plain call with Hermes's betas succeeded, else 1.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--url", required=True)
     parser.add_argument("--token-file", required=True, type=Path)
@@ -79,6 +118,7 @@ def main() -> int:
     results: dict[str, dict] = {}
 
     def run(name: str, status: int, payload: dict) -> None:
+        """Store the summary of the call `name` in `results` and print it as one line."""
         results[name] = describe(status, payload)
         print(f"{name}: {json.dumps(results[name], ensure_ascii=False)}", flush=True)
 

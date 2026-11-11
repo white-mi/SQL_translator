@@ -1,4 +1,4 @@
-"""Model gateway for the researcher: the only process that holds the API key.
+"""Model gateway for the researcher: the only process that holds the provider's API key.
 
 The researcher container talks to this gateway instead of the provider. The gateway
   - swaps the client's token for the operator's key, so the researcher never sees the key;
@@ -9,9 +9,16 @@ The researcher container talks to this gateway instead of the provider. The gate
 The request body goes upstream byte for byte: rewriting it would break prompt caching.
 Standard library only, so no third-party package sits next to the key (ADR 0007).
 
+The operator starts it with `arena.sh gateway` (systemd unit sqltr-arena-gateway, user arena). By hand:
+
     python case/researcher/gateway.py --config case/researcher/gateway.haiku-5-5.json \
-        --key-file /etc/sqltr-arena/model-api-key --client-token-file /srv/sqltr-arena/secrets/model-token \
+        --key-file /srv/sqltr-arena/secrets/model-api-key --client-token-file /srv/sqltr-arena/secrets/model-token \
         --log /srv/sqltr-arena/model-usage.jsonl --max-usd 2 --listen 172.30.0.1:8094
+
+--key-file holds the bare provider key. --client-token-file holds the token clients must send;
+without it every client is served. --log gets one JSON line per billed call and is summed at start
+to restore the spend. The gateway prints one status line, then serves until it is killed; the
+routes and refusals are listed in Handler.
 """
 
 from __future__ import annotations
@@ -38,6 +45,20 @@ MAX_BODY_BYTES = 32 * 2**20
 
 @dataclass(frozen=True)
 class Config:
+    """Gateway settings, read from the JSON file given by --config, such as gateway.haiku-5-5.json.
+
+    Attributes:
+        upstream: provider base URL; the client's request path is appended to its path.
+        auth: how the key goes upstream: "x-api-key" header or "bearer" authorization.
+        model: the only model a request may name.
+        prices_per_mtok: dollars per million tokens: "input", "output" and optionally
+            "cache_read", "cache_write_5m", "cache_write_1h"; a missing cache price is "input".
+        long_prompt: a call whose prompt is longer than "tokens" costs "multiplier" times more in
+            full; None means one price at any length.
+        max_concurrent: upstream calls in flight at once; further requests wait for a slot.
+        timeout_seconds: socket timeout of each upstream connection.
+    """
+
     upstream: str
     auth: str  # "x-api-key" or "bearer"
     model: str
@@ -48,13 +69,27 @@ class Config:
 
 
 class Usage:
-    """Token counts of one call. Understands the Anthropic and the OpenAI response shapes."""
+    """Token counts of one upstream call, read from the usage objects in its response.
+
+    Understands the Anthropic and the OpenAI response shapes. `input` counts uncached prompt tokens
+    only; `cache_read`, `write_5m` and `write_1h` are the cached parts; `seen` tells whether any
+    usage object arrived. Make one per call, pass each stream event or the whole JSON reply to
+    `apply_event`, then price it with `cost`.
+    """
 
     def __init__(self):
+        """Start with zero counts and no usage seen."""
         self.input = self.output = self.cache_read = self.write_5m = self.write_1h = 0
         self.seen = False
 
     def apply(self, usage: dict) -> None:
+        """Update the counts from one usage object; anything but a dict is ignored.
+
+        An OpenAI object (it has `prompt_tokens`) sets the input, output and cache-read counts. An
+        Anthropic object updates only the fields it carries, because a stream reports input in
+        message_start and the running output total in message_delta. Cache writes without the
+        5m/1h breakdown count as 5-minute writes.
+        """
         if not isinstance(usage, dict):
             return
         self.seen = True
@@ -76,6 +111,11 @@ class Usage:
             self.write_5m, self.write_1h = usage["cache_creation_input_tokens"] or 0, 0
 
     def apply_event(self, event: dict) -> None:
+        """Apply the usage in one stream event or one complete JSON reply.
+
+        Reads `message.usage` (Anthropic message_start) or a top-level `usage` (message_delta, or a
+        whole non-streamed reply); events without usage and non-dicts are ignored.
+        """
         if not isinstance(event, dict):
             return
         message = event.get("message")
@@ -85,9 +125,15 @@ class Usage:
             self.apply(event["usage"])
 
     def prompt_tokens(self) -> int:
+        """Return the prompt size the price depends on: uncached input plus cache reads and writes."""
         return self.input + self.cache_read + self.write_5m + self.write_1h
 
     def cost(self, config: Config) -> float:
+        """Return the call's price in dollars under `config`'s prices.
+
+        Above `config.long_prompt["tokens"]` prompt tokens the whole call, cache hits included, pays
+        the long-prompt multiplier.
+        """
         prices = config.prices_per_mtok
         long_prompt = config.long_prompt
         multiplier = 1
@@ -101,13 +147,21 @@ class Usage:
 
 
 class EventStream:
-    """Collects usage from a server-sent event stream that arrives in arbitrary chunks."""
+    """Incremental parser that feeds the usage in a server-sent event stream into a Usage.
+
+    The stream arrives in arbitrary chunks, so a line split between chunks waits in the buffer.
+    """
 
     def __init__(self, usage: Usage):
+        """Feed the counts into `usage`, starting with an empty buffer."""
         self.usage = usage
         self.buffer = b""
 
     def feed(self, chunk: bytes) -> None:
+        """Consume one chunk: apply every complete `data:` line and keep the trailing partial line.
+
+        Payloads that are not JSON, such as "[DONE]", are skipped.
+        """
         self.buffer += chunk
         *lines, self.buffer = self.buffer.split(b"\n")
         for line in lines:
@@ -119,7 +173,24 @@ class EventStream:
 
 
 class Gateway:
+    """Shared state of one gateway process: the key, the client token, the spend and the slots.
+
+    Built by build_server; every handler thread reaches it as `Handler.gateway`. The spend and the
+    call count are restored from the log at construction, so the cap holds across restarts.
+    """
+
     def __init__(self, config: Config, key: str, client_token: str | None, log_path: Path, max_usd: float):
+        """Hold the settings and restore the spend from `log_path` if it exists.
+
+        Args:
+            key: the provider key, sent upstream instead of the client's token.
+            client_token: the token clients must send; None serves any client.
+            log_path: the JSONL call log that `record` appends to.
+            max_usd: the cap; billed calls are refused once the recorded spend reaches it.
+
+        Raises:
+            ValueError: the key is empty, or a line of the log is not JSON.
+        """
         if not key:
             raise ValueError("empty API key")
         self.config, self.key, self.client_token, self.log_path, self.max_usd = config, key, client_token, log_path, max_usd
@@ -136,6 +207,11 @@ class Gateway:
                 self.unreported += 0 if row.get("usage_complete", True) else 1
 
     def record(self, row: dict) -> None:
+        """Count one billed call and append its row to the log as one JSON line.
+
+        Thread-safe. Creates the log with mode 0640 (less the umask) if it is missing. Called once
+        per billed call, by the `record_once` closure in Handler.forward.
+        """
         with self.lock:
             self.spent += row.get("usd", 0)
             self.calls += 1
@@ -145,23 +221,49 @@ class Gateway:
                 log.write(json.dumps(row) + "\n")
 
     def over_budget(self) -> bool:
+        """Return whether the recorded spend has reached the cap.
+
+        A call counts only once it is recorded, so calls already admitted (running or waiting for
+        a slot) can take the spend past the cap.
+        """
         with self.lock:
             return self.spent >= self.max_usd
 
     def status(self) -> dict:
+        """Return the summary served at GET /healthz and printed at start.
+
+        `calls` counts the rows in the log (calls to billed paths, failed ones included);
+        `calls_without_usage` counts 200 replies that reported no usage, so their cost is unknown
+        and logged as 0.
+        """
         with self.lock:
             return {"model": self.config.model, "spent_usd": round(self.spent, 6), "cap_usd": self.max_usd,
                     "calls": self.calls, "calls_without_usage": self.unreported}
 
 
 class Handler(BaseHTTPRequestHandler):
+    """HTTP handler of the gateway; build_server binds it to one Gateway in a subclass.
+
+    GET  /healthz                              200 with Gateway.status(); no token needed.
+    GET  /v1/models                            forwarded, not billed.
+    POST /v1/messages, /v1/chat/completions    forwarded and billed.
+    POST /v1/messages/count_tokens             forwarded, not billed; the model is still checked.
+
+    Every path but /healthz needs the client token. Refusals use the Anthropic error shape: 401 wrong
+    token, 404 unknown path, 413 body over MAX_BODY_BYTES, 400 body not a JSON object, 403 another
+    model or the cap reached, 502 upstream unreachable. Path matching ignores the query string;
+    the forwarded path keeps it.
+    """
+
     protocol_version = "HTTP/1.1"
     gateway: Gateway
 
     def log_message(self, *_args) -> None:
+        """Drop the default per-request access log on stderr."""
         pass  # the call log is the only record
 
     def reply(self, status: int, payload: dict) -> None:
+        """Send `payload` as a complete JSON response with the given status."""
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("content-type", "application/json")
@@ -170,9 +272,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def fail(self, status: int, kind: str, message: str) -> None:
+        """Send an error in the Anthropic error shape, with the message prefixed by "model gateway:".
+
+        `kind` is the error type, such as "permission_error".
+        """
         self.reply(status, {"type": "error", "error": {"type": kind, "message": f"model gateway: {message}"}})
 
     def authorized(self) -> bool:
+        """Return whether the request carries the client token.
+
+        The token is accepted in x-api-key or as `Authorization: Bearer`; x-api-key wins when both
+        are present. Compared in constant time. Always true when the gateway has no client token.
+        """
         expected = self.gateway.client_token
         if expected is None:
             return True
@@ -183,6 +294,7 @@ class Handler(BaseHTTPRequestHandler):
         return hmac.compare_digest(supplied.encode(), expected.encode())
 
     def do_GET(self) -> None:
+        """Serve GET: /healthz without a token, READ_PATHS forwarded unbilled; else 401 or 404."""
         path = urlsplit(self.path).path
         if path == "/healthz":
             self.reply(200, self.gateway.status())
@@ -194,6 +306,11 @@ class Handler(BaseHTTPRequestHandler):
             self.fail(404, "not_found_error", "unknown path")
 
     def do_POST(self) -> None:
+        """Serve POST: check size, token, path, JSON body, model and cap in that order, then forward.
+
+        A body over MAX_BODY_BYTES is refused unread (413) and the connection closed. The cap
+        applies to billed paths only and is refused with 403, not 429, so the client does not retry.
+        """
         path = urlsplit(self.path).path
         length = int(self.headers.get("content-length") or 0)
         if length > MAX_BODY_BYTES:
@@ -220,6 +337,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.forward("POST", body, billed=path in MODEL_PATHS)
 
     def forward(self, method: str, body: bytes, billed: bool) -> None:
+        """Send the request upstream with the operator's key and relay the reply to the client.
+
+        Only REQUEST_HEADERS go upstream: the client's token is replaced by the key, and the body is
+        passed byte for byte, because rewriting it would break prompt caching. Waits for one of the
+        max_concurrent slots. A failure before any upstream status becomes a 502. A billed call is
+        logged exactly once, also when it fails; its cost is 0 unless the status is 200.
+
+        Args:
+            method: "GET" or "POST".
+            body: the raw request body, b"" for GET.
+            billed: log the call and count its cost (MODEL_PATHS only).
+        """
         config = self.gateway.config
         target = urlsplit(config.upstream)
         connection_type = http.client.HTTPSConnection if target.scheme == "https" else http.client.HTTPConnection
@@ -234,6 +363,11 @@ class Handler(BaseHTTPRequestHandler):
         status, stream, recorded = 0, False, False
 
         def record_once() -> None:
+            """Log this billed call the first time it is called; later calls do nothing.
+
+            Does nothing for unbilled paths. The row holds the status, token counts, cost, the
+            long_prompt flag, the duration and usage_complete (false for a 200 without usage).
+            """
             nonlocal recorded
             if not billed or recorded:
                 return
@@ -263,8 +397,21 @@ class Handler(BaseHTTPRequestHandler):
         record_once()
 
     def relay(self, response, usage: Usage, stream: bool, status: int, record_once) -> None:
-        """Pass the response on. The cost is recorded before the client sees the end of the response,
-        so the next call of the same client always finds its predecessor counted against the cap."""
+        """Pass the upstream response on to the client, recording the call before the response ends.
+
+        A plain reply is read whole, recorded, then sent with a content-length. A stream is relayed
+        chunk by chunk as it arrives and recorded before the terminating chunk. Either way the next
+        call of the same client always finds its predecessor counted against the cap. If the client
+        goes away mid-stream, the rest is still read to count the usage, then the connection is
+        closed. Only RESPONSE_HEADERS and anthropic-ratelimit-* headers are passed on.
+
+        Args:
+            response: the upstream http.client.HTTPResponse.
+            usage: filled from the response.
+            stream: the response is a server-sent event stream.
+            status: the upstream status; a plain reply's usage is read only when it is 200.
+            record_once: the closure from `forward` that logs the call.
+        """
         if not stream:
             payload = response.read()
             if status == 200:
@@ -304,6 +451,12 @@ class Handler(BaseHTTPRequestHandler):
 
 def build_server(config: Config, key: str, client_token: str | None, log_path: Path, max_usd: float,
                  host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+    """Return a threaded HTTP server for the gateway, bound but not yet serving.
+
+    The caller runs `serve_forever()` (main, or a thread in the tests). `server.gateway` is the
+    shared Gateway. Port 0 picks a free port; read it from `server.server_address`. The other
+    parameters are those of Gateway, which raises ValueError for an empty key.
+    """
     gateway = Gateway(config, key, client_token, log_path, max_usd)
     handler = type("BoundHandler", (Handler,), {"gateway": gateway})
     server = ThreadingHTTPServer((host, port), handler)
@@ -313,6 +466,10 @@ def build_server(config: Config, key: str, client_token: str | None, log_path: P
 
 
 def main() -> int:
+    """Run the gateway from the command line until it is killed (see the module docstring).
+
+    Surrounding whitespace and a leading byte order mark are stripped from the key file.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--key-file", required=True, type=Path)

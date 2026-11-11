@@ -10,7 +10,17 @@ Three measurements on the same 500 examples:
   baseline         the real starting candidate, metric cache on
   baseline-repeat  the same answers again: what the metric cache saves a descendant
 
+Needs data/train built (with instances.jsonl), the pinned arena with its venv, Docker with the
+runner image, and the engines reachable through the SQLTR_PG_* and SQLTR_TRINO_* variables, which
+the evaluators inherit (e.g. `set -a; . /etc/sqltr-arena/operator.env; set +a`). On the 2 vCPU VM
+it took about 40 minutes.
+
     python case/acceptance/full_train.py --arena /opt/arena --work /srv/sqltr-fulltrain-1 --report out.json
+
+--work must be new or empty. Two train evaluators listen on 127.0.0.1 at --base-port (metric cache
+off) and the next port (cache on). Prints one JSON row per measurement and writes --report with the
+rows, the lowest memory available on the host and Trino's peak memory. Exit code 0 when the perfect
+candidate scored exactly 1.0 on all 500 examples.
 """
 
 from __future__ import annotations
@@ -39,14 +49,20 @@ print(json.dumps({"answer": answers[task["direction"] + "\\n" + task["script"]]}
 
 
 class MemorySampler(threading.Thread):
-    """Lowest MemAvailable seen. Reads /proc only, so the measurement adds no real load."""
+    """Background thread that tracks the lowest MemAvailable of the host, in MiB.
+
+    Reads /proc/meminfo only (Linux), so the measurement adds no real load. Call start(), set
+    `done` to stop it, then read `lowest_mb`, which is None until the first sample after 5 seconds.
+    """
 
     def __init__(self):
+        """Create the sampler as a daemon thread; nothing is sampled until start()."""
         super().__init__(daemon=True)
         self.lowest_mb = None
         self.done = threading.Event()
 
     def run(self):
+        """Sample MemAvailable every 5 seconds until `done` is set; the thread body, run by start()."""
         while not self.done.wait(5):
             for line in Path("/proc/meminfo").read_text().splitlines():
                 if line.startswith("MemAvailable:"):
@@ -55,12 +71,22 @@ class MemorySampler(threading.Thread):
 
 
 def trino_peak_mb() -> int | None:
+    """Return the Trino container's peak memory in MiB, or None if it cannot be read.
+
+    Reads the cgroup v2 file memory.peak inside the compose container sqltr-trino-1 with docker exec.
+    """
     proc = subprocess.run(["docker", "exec", "sqltr-trino-1", "cat", "/sys/fs/cgroup/memory.peak"],
                           capture_output=True, text=True)
     return int(proc.stdout) // 2**20 if proc.returncode == 0 and proc.stdout.strip().isdigit() else None
 
 
 def build_candidates(work: Path) -> dict[str, Path]:
+    """Write the three measured candidates under <work>/ways; return their directories by name.
+
+    baseline: a copy of case/ways/baseline. baseline-repeat: the same code plus a marker file, a
+    different snapshot with the same answers. perfect: PERFECT_SOLVE with answers.json, the oracle
+    translation of every train instance keyed by direction and source script.
+    """
     ways = work / "ways"
     shutil.copytree(ROOT / "case" / "ways" / "baseline", ways / "baseline", ignore=shutil.ignore_patterns("__pycache__"))
     # a different snapshot with the same behaviour: the arena measures it again, the metric cache answers
@@ -77,6 +103,12 @@ def build_candidates(work: Path) -> dict[str, Path]:
 
 
 def main() -> int:
+    """Run the three measurements, write the report and return the exit code.
+
+    Reuses the Acceptance helpers from run.py, but not its scenario: one journal with three
+    proposals, two train evaluators, no public or private. The return code is 0 only if the
+    perfect candidate scored exactly 1.0 on 500 examples.
+    """
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--arena", required=True, help="pinned arena checkout with .venv")
     p.add_argument("--work", required=True, help="new empty directory for this run")

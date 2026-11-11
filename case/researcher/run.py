@@ -5,6 +5,17 @@ how far the search is and, if it is not over, sends the agent back to work. Two 
 any change in the journal end the run with an error: that would spend money and move nothing.
 
 The container holds only a token for the model gateway. The provider key stays with the gateway.
+
+This is the entrypoint of the sqltr-researcher:1 image. The operator starts it with
+
+    sudo bash case/deploy/arena.sh researcher --prompt-file /workspace/<prompt file> [run.py options]
+
+which sets SQLTR_MODEL_URL, ARENA_MODEL_NAME and ARENA_SEARCH_JOURNAL (`arena.sh researcher-env`)
+and mounts the gateway token at /run/secrets/model-token. The loop writes Hermes's config.yaml,
+which holds the token, to $HERMES_HOME; prints one JSON line per turn; and with --transcript
+rewrites the conversation as JSONL after every turn. Exit codes: 0 the search is finished,
+2 the agent failed or did not complete its turn, 3 two turns without any change in the journal,
+4 the agent returned no conversation history.
 """
 
 from __future__ import annotations
@@ -26,6 +37,11 @@ SYSTEM_MESSAGE = (
 
 
 def write_home(home: Path, values: dict[str, str]) -> None:
+    """Write Hermes's settings to `home`/config.yaml from hermes-config.yaml next to this file.
+
+    Each `@NAME@` placeholder is replaced by values[NAME]. The file holds the gateway token, so it
+    is readable by its owner only. Creates `home` if needed.
+    """
     home.mkdir(parents=True, exist_ok=True)
     text = (HERE / "hermes-config.yaml").read_text()
     for name, value in values.items():
@@ -35,12 +51,22 @@ def write_home(home: Path, values: dict[str, str]) -> None:
 
 
 def journal_status(journal: str) -> dict:
+    """Return the search status of `journal` as the arena CLI reports it (`evaluator.search status`).
+
+    Runs the CLI with the image's system Python (ARENA_PYTHON). The loop reads `running`,
+    `finalization`, `remaining_proposals`, `max_solutions`, `stopped` and `proposed`.
+    Raises subprocess.CalledProcessError if the CLI fails.
+    """
     out = subprocess.run([ARENA_PYTHON, "-m", "evaluator.search", "--journal", journal, "status"],
                          capture_output=True, text=True, check=True).stdout
     return json.loads(out)
 
 
 def search_finished(status: dict, stop_at_limit: bool) -> bool:
+    """Return whether the loop may stop: nothing is being measured and the batch is finalized.
+
+    With `stop_at_limit` (the rehearsal) it is also enough that no proposal places are left.
+    """
     if status.get("running"):
         return False
     if status.get("finalization"):
@@ -49,6 +75,11 @@ def search_finished(status: dict, stop_at_limit: bool) -> bool:
 
 
 def continuation(status: dict) -> str:
+    """Return the prompt that sends the agent back to work after a turn that ended too early.
+
+    Open measurements come first; then free proposal places, unless the search was stopped;
+    otherwise the agent is told to finish its measurements, select the finalists and finalize.
+    """
     if status.get("running"):
         return (f"Your turn ended, but these measurements are still open: {json.dumps(status['running'])}. "
                 "Collect their results and record them in the journal, waiting for the calculated remaining "
@@ -62,6 +93,12 @@ def continuation(status: dict) -> str:
 
 
 def main() -> int:
+    """Configure Hermes, then run agent turns until the search is finished; return the exit code.
+
+    The first turn gets the prompt file, later turns a `continuation`. --journal, --model and
+    --gateway-url default to ARENA_SEARCH_JOURNAL, ARENA_MODEL_NAME and SQLTR_MODEL_URL; the exit
+    codes are listed in the module docstring. Exits with a message when no gateway URL is given.
+    """
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--prompt-file", required=True, type=Path)
     parser.add_argument("--journal", default=os.environ.get("ARENA_SEARCH_JOURNAL", "/search/search.sqlite3"))

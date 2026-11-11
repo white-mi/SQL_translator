@@ -8,6 +8,11 @@
 #
 # Run as root on the VM, with /etc/sqltr-arena/operator.env in place:
 #   bash case/researcher/rehearsal.sh results/researcher/rehearsal.json
+#
+# It wipes /srv/sqltr-rehearsal, writes /etc/sqltr-arena/rehearsal.env and rehearsal-seeds.json, logs to
+# /srv/sqltr-rehearsal/logs and /tmp/rehearsal-*.out, and writes the report named by its argument.
+# Exit 0 when every check passes, 20 when a deployment step fails, 21 if the real campaign journal
+# exists, 1 otherwise.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 REPORT=${1:?usage: rehearsal.sh report.json}
@@ -16,7 +21,9 @@ E=/etc/sqltr-arena/rehearsal.env
 A="bash case/deploy/arena.sh"
 export SQLTR_OPERATOR_ENV=$E
 export PATH="${SUDO_USER:+/home/$SUDO_USER/.local/bin:}$PATH"
+# print a timestamped section heading: step <text>
 step() { echo; echo "[$(date -u +%T)] === $*"; }
+# run a command and exit 20 if it fails: must <command> [args...]
 must() { "$@" || { echo "FAILED: $*"; exit 20; }; }
 
 # the evaluator units have fixed names, so a rehearsal must not run next to the real campaign
@@ -73,6 +80,7 @@ chown arena "$R/gateway.fake.json"
 printf 'fake-key-for-rehearsal\n' > "$R/secrets/model-api-key"
 must $A gateway > /tmp/rehearsal-gateway.out 2>&1
 
+# (re)start the fake provider as unit sqltr-fake-model with a fresh log $R/logs/fake-<log name>.jsonl
 fake() {  # $1 log name, $2 script file, then extra arguments
   systemctl stop sqltr-fake-model 2>/dev/null
   local log="$R/logs/fake-$1.jsonl" script=$2; shift 2
@@ -81,6 +89,7 @@ fake() {  # $1 log name, $2 script file, then extra arguments
     --script "$script" --log "$log" "$@"
   sleep 2
 }
+# run the researcher container on campaign.md until the proposal limit is used up, without delegation
 researcher() { $A researcher --prompt-file /workspace/case/campaign/campaign.md --stop-at-limit --toolsets terminal,file,todo; }
 
 step "A: the scripted researcher does real work"

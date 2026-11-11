@@ -16,6 +16,7 @@ python3 -m venv .venv >/dev/null 2>&1 || true
 pip install -q -e . pytest
 
 step=${STEP:-engines}
+# print "== <command>", run it and tee its stdout and stderr into $OUT/bootstrap.log: run <command> [args...]
 run() { echo "== $*"; "$@" 2>&1 | tee -a "$OUT/bootstrap.log"; }
 
 if [ "$step" = engines ]; then

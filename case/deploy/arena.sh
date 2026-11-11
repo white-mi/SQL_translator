@@ -5,22 +5,25 @@
 #   sudo bash case/deploy/arena.sh <command>      with /etc/sqltr-arena/operator.env filled
 #
 # Commands, in the order of the first deployment:
-#   layout      directories, permissions, tokens, research network
+#   layout      service user, directories, permissions, tokens, metric drivers (arena venv), research network
 #   image       build the runner image sqltr-runner:1 (ADR 0008)
 #   freeze      freeze the metric package into $ROOT/metric (once per campaign)
 #   data        train copy + public/private from operator seeds (/etc/sqltr-arena/seeds.json), references on Trino
 #   accept      synthetic acceptance (case/acceptance/run.py) in a throwaway directory
 #   journal     init the campaign journal with MAX_SOLUTIONS (once per campaign)
 #   workspace   clean researcher workspace from an allowlist (ADR 0009): no generator, holdout, oracle scripts
-#   start|stop|status   train/public/private evaluators and the model gateway (systemd transient units)
+#   start       start the train/public/private evaluators (systemd transient units, or background processes)
+#   stop        stop the evaluators and the model gateway
+#   status      check the three evaluators' /healthz (not the gateway)
 #   readiness   GET /v1/search-readiness of private with the campaign conditions
 #   firewall    research network: only the evaluators and the gateway on this host, no internet
 #   researcher-image    build the researcher image (Hermes plus the arena CLI, ADR 0007)
-#   gateway     model gateway alone: the only process that holds the provider key
+#   gateway     start the model gateway, the only process that holds the provider key (systemd only)
 #   researcher <run.py arguments>   run the researcher container; always applies the firewall first
 #   researcher-env      print the env block for the researcher container (URLs, no secrets)
 #
 # SQLTR_OPERATOR_ENV selects another settings file, so a rehearsal can run with its own ROOT, ports and seeds.
+# Without a known command it prints lines 2-26 of this file, which are this header.
 set -euo pipefail
 ENV_FILE=${SQLTR_OPERATOR_ENV:-/etc/sqltr-arena/operator.env}
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE (copy case/deploy/operator.env.example)"; exit 1; }
@@ -39,9 +42,12 @@ MODEL_MAX_USD=${MODEL_MAX_USD:-10}
 # back during a tool loop. The real API stays out of reach: the firewall allows only the gateway's port.
 MODEL_GATEWAY_HOST=${MODEL_GATEWAY_HOST:-api.anthropic.com}
 
+# run an arena CLI module with the arena venv from the arena checkout: arena <module> [args...]
 arena() { (cd "$ARENA_DIR" && "$PY" -m "$@"); }
+# print the evaluator port of a split: port train|public|private
 port() { case $1 in train) echo "$TRAIN_PORT";; public) echo "$PUBLIC_PORT";; private) echo "$PRIVATE_PORT";; esac; }
 
+# create the service user, directories, evaluator tokens, metric drivers and the research network; safe to rerun
 cmd_layout() {
   id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
   usermod -aG docker "$SERVICE_USER"
@@ -63,8 +69,10 @@ cmd_layout() {
   echo "layout ready in $ROOT"
 }
 
+# build $RUNNER_IMAGE from case/harness/runner.Dockerfile and print its digest
 cmd_image() { (cd "$SQLTR_DIR" && docker build -f case/harness/runner.Dockerfile -t "$RUNNER_IMAGE" .); docker images --digests "${RUNNER_IMAGE%%:*}"; }
 
+# freeze and verify a copy of case/metric into $ROOT/metric, print the lock file's sha256; refuses if it exists
 cmd_freeze() {
   [ -e "$ROOT/metric" ] && { echo "$ROOT/metric exists: the metric is frozen for this campaign"; exit 1; }
   local src; src=$(mktemp -d)
@@ -76,6 +84,7 @@ cmd_freeze() {
   sha256sum "$ROOT/metric/metric.lock.json"
 }
 
+# build public/private from $SEEDS_FILE (references on Trino), copy all three splits to $ROOT/data, print sha256s
 cmd_data() {
   local seeds=$SEEDS_FILE sq=("$SQLTR_DIR/.venv/bin/python" -m sqltr --local)
   [ -f "$seeds" ] || { echo "missing $seeds (operator seeds, see README: never in git)"; exit 1; }
@@ -92,6 +101,7 @@ cmd_data() {
   sha256sum "$ROOT"/data/{train,public,private}/dataset.jsonl
 }
 
+# run case/acceptance/run.py in a new directory $ROOT-accept-<UTC time>, sqltr CLI on 127.0.0.1 (--local)
 cmd_accept() {
   local work="$ROOT-accept-$(date -u +%Y%m%dT%H%M%S)"
   (cd "$SQLTR_DIR" && "$SQLTR_DIR/.venv/bin/python" case/acceptance/run.py --arena "$ARENA_DIR" --work "$work" \
@@ -103,6 +113,7 @@ WORKSPACE_ALLOW=(README.md case/README.md case/campaign case/dataset/README.md c
   case/harness/main.py case/metric/metric.json case/metric/score.py case/metric/metric_config.json
   case/metric/sqltr_metric case/ways/baseline data/train/dataset.jsonl docs/domain.md docs/arena.md docs/adr)
 
+# copy WORKSPACE_ALLOW to $WORKSPACE_DIR once, refuse on leaks, commit it to git, give it to uid 10001
 cmd_workspace() {
   local ws=${WORKSPACE_DIR:-/srv/sqltr-workspace}
   [ -e "$ws" ] && { echo "$ws exists: the researcher workspace is created once"; exit 1; }
@@ -119,12 +130,14 @@ cmd_workspace() {
   echo "workspace ready: $ws ($(find "$ws" -type f -not -path '*/.git/*' | wc -l) files)"
 }
 
+# init the campaign journal with MAX_SOLUTIONS, writable by the researcher (uid 10001); refuses if it exists
 cmd_journal() {
   [ -e "$ROOT/search/search.sqlite3" ] && { echo "journal exists: resume with the same database"; exit 1; }
   arena evaluator.search --journal "$ROOT/search/search.sqlite3" init --max-solutions "$MAX_SOLUTIONS"
   chown 10001:"$(id -g "$SERVICE_USER")" "$ROOT"/search/search.sqlite3*; chmod 0660 "$ROOT"/search/search.sqlite3*
 }
 
+# write one evaluator's settings, including the engine passwords; also leaves umask 077 for the rest of the run
 write_env() {  # split -> $ROOT/env/<split>.env (read by systemd, root-owned, 0600)
   local s=$1 f="$ROOT/env/$1.env"
   umask 077
@@ -175,6 +188,7 @@ EOF
   esac
 }
 
+# start the three evaluators as units sqltr-arena-<split> (background processes without systemd), then cmd_status
 cmd_start() {
   for s in $SPLITS; do
     write_env "$s"
@@ -195,6 +209,7 @@ cmd_start() {
   sleep 5; cmd_status
 }
 
+# start the gateway as unit sqltr-arena-gateway; creates the client token $ROOT/secrets/model-token if missing
 cmd_gateway() {  # the key file holds the bare key; it never enters the researcher container (ADR 0007)
   local key="$ROOT/secrets/model-api-key" token="$ROOT/secrets/model-token"
   [ -s "$key" ] || { echo "missing $key, see case/researcher/README.md"; exit 1; }
@@ -209,6 +224,7 @@ cmd_gateway() {  # the key file holds the bare key; it never enters the research
   sleep 2; curl -fsS "http://$LISTEN_HOST:$GATEWAY_PORT/healthz"; echo
 }
 
+# let the research network reach only the evaluator and gateway ports on $LISTEN_HOST; drop its forwarded traffic
 cmd_firewall() {  # idempotent; rules do not survive a reboot, so `researcher` applies them every time
   local net="${LISTEN_HOST%.*}.0/24"
   iptables -N SQLTR_RESEARCH_IN 2>/dev/null || iptables -F SQLTR_RESEARCH_IN
@@ -221,12 +237,14 @@ cmd_firewall() {  # idempotent; rules do not survive a reboot, so `researcher` a
   echo "firewall: $net reaches only $LISTEN_HOST:$TRAIN_PORT,$PUBLIC_PORT,$PRIVATE_PORT,$GATEWAY_PORT, no internet"
 }
 
+# build $RESEARCHER_IMAGE from case/researcher/Dockerfile with the arena checkout as context, print its digest
 cmd_researcher_image() {
   docker build -f "$SQLTR_DIR/case/researcher/Dockerfile" --build-context "sqltr=$SQLTR_DIR/case/researcher" \
     -t "$RESEARCHER_IMAGE" "$ARENA_DIR"
   docker images --digests "${RESEARCHER_IMAGE%%:*}"
 }
 
+# apply the firewall, give uid 10001 copies of the tokens, run the researcher container; args go to run.py
 cmd_researcher() {
   cmd_firewall
   local ws=${WORKSPACE_DIR:-/srv/sqltr-workspace} secrets="$ROOT/research-secrets" t
@@ -242,6 +260,7 @@ cmd_researcher() {
     --env-file <(cmd_researcher_env | grep -v '^#') "$RESEARCHER_IMAGE" "$@"
 }
 
+# stop the three evaluators and the gateway (without systemd: kill the background evaluators by their pid files)
 cmd_stop() {
   for s in $SPLITS gateway; do
     if [ -d /run/systemd/system ]; then systemctl stop "sqltr-arena-$s" 2>/dev/null || true
@@ -250,6 +269,7 @@ cmd_stop() {
   done; sleep 2; echo stopped
 }
 
+# print up or DOWN for each evaluator from its /healthz; the gateway is not checked
 cmd_status() {
   for s in $SPLITS; do
     if curl -fsS "http://$LISTEN_HOST:$(port "$s")/healthz" >/dev/null 2>&1; then echo "$s: up :$(port "$s")"
@@ -257,12 +277,14 @@ cmd_status() {
   done
 }
 
+# check private's campaign admission against MAX_SOLUTIONS, FINALISTS, OUTPUT_COUNT, RELEASE_ID
 cmd_readiness() {
   arena evaluator.client search-readiness --url "http://$LISTEN_HOST:$PRIVATE_PORT" \
     --token-file "$ROOT/secrets/private-token" --require-campaign --max-solutions "$MAX_SOLUTIONS" \
     --finalists "$FINALISTS" --output-count "$OUTPUT_COUNT" --release-id "$RELEASE_ID-private"
 }
 
+# print the researcher container's environment: evaluator and gateway URLs, campaign ids, no secrets
 cmd_researcher_env() {
   cat <<EOF
 # researcher container: network arena-research, journal $ROOT/search mounted at /search (rw)
@@ -282,6 +304,7 @@ OUTPUT_COUNT=$OUTPUT_COUNT
 EOF
 }
 
+# dispatch the command; anything else prints the header as usage and fails
 case "${1:-}" in
   layout|image|freeze|data|accept|journal|workspace|start|stop|status|readiness|firewall|gateway) "cmd_$1" ;;
   researcher-image) cmd_researcher_image ;;

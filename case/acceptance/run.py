@@ -5,11 +5,18 @@ model" mode), drives a miniature campaign through the arena's own CLI and record
 It never touches the real campaign: own work directory, own tokens, own journal, synthetic data
 generated with dev seeds that are not the operator seeds.
 
+The operator runs it as `arena.sh accept`, in a new directory `$ROOT-accept-<time>`. By hand:
+
     python case/acceptance/run.py --arena /opt/arena --work /srv/sqltr-accept --runner-image sqltr-runner:1
 
 Needs: a pinned arena checkout with its venv (.venv) where the metric drivers are installed,
 Docker with the runner image, PostgreSQL with loaded states (SQLTR_PG_* env), and for gp2trino
-examples Trino (SQLTR_TRINO_* env). Without Trino use --directions trino2gp.
+examples Trino (SQLTR_TRINO_* env). Without Trino use --directions trino2gp. Also needs the train
+split built in data/train; --local makes the sqltr CLI reach the engines on 127.0.0.1.
+
+--work must be new or empty. The run leaves there its data, frozen metric, candidates, journals,
+evaluator state and logs, and report.json with every check. Evaluators listen on 127.0.0.1 at six
+ports from --base-port up. Prints one PASS/FAIL line per check; exit code 0 when all 19 pass.
 """
 
 from __future__ import annotations
@@ -30,7 +37,22 @@ ACCEPT_SEEDS = {"public": 910001, "private": 910002}  # dev seeds, never the ope
 
 
 class Acceptance:
+    """One acceptance run of the arena deployment in its own work directory.
+
+    Construct it with the parsed command line, then call `run()`: it refuses a non-empty work
+    directory, builds the data, freezes the metric, writes four candidates, starts throwaway
+    evaluators as host processes, performs checks A01-A19 in order and writes report.json. The
+    evaluators are stopped in a `finally`, also when a step raises; the work directory stays for
+    inspection. A failed check is recorded and the run goes on; an error in a step (a CLI call
+    that must succeed, an evaluator that does not start) aborts the run without a report.
+
+    full_train.py reuses the helpers without `run` and with fewer arguments: apart from
+    `prepare_data` and `run`, the methods read only args.arena, work, runner_image, base_port,
+    cli_timeout and wait_timeout.
+    """
+
     def __init__(self, args):
+        """Remember the arguments and derive the paths; nothing starts until a method is called."""
         self.args = args
         self.arena = Path(args.arena).resolve()
         self.python = str(self.arena / ".venv" / "bin" / "python")
@@ -42,6 +64,12 @@ class Acceptance:
 
     # ------------------------------------------------------------------ helpers
     def arena_cli(self, *argv, ok=True) -> tuple[int, str]:
+        """Run `python -m <argv>` with the arena's venv in its checkout; return (exit code, output).
+
+        The output is stdout on success and stderr on failure, stripped. With `ok` a non-zero exit
+        raises RuntimeError; pass ok=False when a refusal is the expected outcome. Raises
+        subprocess.TimeoutExpired after --cli-timeout seconds.
+        """
         proc = subprocess.run([self.python, "-m", *map(str, argv)], cwd=self.arena, capture_output=True,
                               text=True, timeout=self.args.cli_timeout)
         if ok and proc.returncode != 0:
@@ -49,10 +77,18 @@ class Acceptance:
         return proc.returncode, (proc.stdout if proc.returncode == 0 else proc.stderr).strip()
 
     def check(self, name: str, passed: bool, detail) -> None:
+        """Record one check for the report and print a PASS/FAIL line.
+
+        `detail` is JSON-serialisable evidence; the printed copy is cut to 300 characters.
+        """
         self.checks.append({"check": name, "passed": bool(passed), "detail": detail})
         print(f"[{'PASS' if passed else 'FAIL'}] {name}: {json.dumps(detail, ensure_ascii=False)[:300]}", flush=True)
 
     def token(self, name: str) -> Path:
+        """Return the token file of evaluator `name`, <work>/secrets/<name>-token.
+
+        The first call writes a random token with mode 0600; later calls return the same file.
+        """
         path = self.work / "secrets" / f"{name}-token"
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,6 +98,17 @@ class Acceptance:
 
     # ------------------------------------------------------------------ preparation
     def prepare_data(self) -> None:
+        """Build the acceptance datasets in <work>/data and set `self.data` (step one of `run`).
+
+        Every split keeps only the examples of --directions. Train takes the first --train-examples
+        of those from the repository's data/train. Public and private are generated from --families
+        families each with the dev seeds ACCEPT_SEEDS, excluding the families of the splits before
+        them, with references on Trino when gp2trino is in --directions.
+
+        Raises:
+            SystemExit: data/train/dataset.jsonl is missing.
+            subprocess.CalledProcessError: building a split or its references failed.
+        """
         data = self.work / "data"
         directions = set(self.args.directions.split(","))
         if not (ROOT / "data" / "train" / "dataset.jsonl").exists():
@@ -89,6 +136,11 @@ class Acceptance:
         self.data = data
 
     def freeze_metric(self, name: str) -> Path:
+        """Freeze and verify a copy of case/metric with the arena's prepare CLI; return the package.
+
+        The source copy goes to <work>/<name>-src (replaced if present), the frozen package to
+        <work>/srv/<name>. Pass the result as ARENA_METRIC_PATH.
+        """
         src = self.work / f"{name}-src"
         if src.exists():
             shutil.rmtree(src)
@@ -103,6 +155,12 @@ class Acceptance:
         return out
 
     def candidates(self) -> dict[str, Path]:
+        """Write the four acceptance candidates under <work>/ways; return their directories by name.
+
+        baseline: a copy of case/ways/baseline. registry: the same code with a solution.json that
+        selects the registered harness sqltr-program. broken: exits with code 3 without answering.
+        empty: answers "" to every example.
+        """
         ways = self.work / "ways"
         base = ways / "baseline"
         shutil.copytree(ROOT / "case" / "ways" / "baseline", base, ignore=shutil.ignore_patterns("__pycache__"))
@@ -117,6 +175,19 @@ class Acceptance:
 
     # ------------------------------------------------------------------ services
     def start(self, name: str, kind: str, env: dict) -> str:
+        """Start one evaluator as a host process and return its URL once /healthz answers.
+
+        It listens on 127.0.0.1 at --base-port plus the number of evaluators started before, and
+        logs to <work>/logs/<name>.log. Raises RuntimeError if /healthz does not answer within
+        about a minute.
+
+        Args:
+            name: names its state and usage directories under <work>/srv, its token and its log.
+            kind: "train" starts the train service; anything else the public/private service,
+                whose split comes from ARENA_SPLIT in `env`.
+            env: settings on top of the defaults (no model, runner without network, the
+                sqltr-program harness); ARENA_* variables of this process are not passed on.
+        """
         port = self.args.base_port + len(self.ports)
         self.ports[name] = port
         srv = self.work / "srv"
@@ -157,17 +228,36 @@ class Acceptance:
         raise RuntimeError(f"service {name} did not start, see {log.name}")
 
     def stop(self, name: str) -> None:
+        """Terminate evaluator `name` if it is still running and wait for it to exit.
+
+        Unknown names are ignored. Raises subprocess.TimeoutExpired if it takes over 20 seconds.
+        """
         proc = self.procs.pop(name, None)
         if proc and proc.poll() is None:
             proc.terminate()
             proc.wait(timeout=20)
 
     def stop_all(self) -> None:
+        """Stop every evaluator this run has started; `run` and full_train.py call it in `finally`."""
         for name in list(self.procs):
             self.stop(name)
 
     # ------------------------------------------------------------------ flows
     def train(self, url, token, journal, cand, measurement, dataset_id, conditions, example_ids=None) -> dict:
+        """Measure candidate `cand` on a train evaluator and return the arena's result as a dict.
+
+        Submits, polls the status every `poll_seconds` until it leaves RUNNING or --wait-timeout
+        passes, then fetches the result, which records the measurement in the journal and is saved
+        to <work>/results/<measurement>.json.
+
+        Args:
+            url, token: the train evaluator and its token file.
+            journal: the search journal in which `cand` was proposed.
+            measurement: the measurement id in the journal, also the result file's name.
+            dataset_id, conditions: the comparison key of the measurement; the callers pass the
+                evaluator's ARENA_DATASET_ID and ARENA_CONDITIONS_ID.
+            example_ids: a subset of example ids to measure; all examples when omitted.
+        """
         extra = [x for e in (example_ids or []) for x in ("--example-id", e)]
         _, out = self.arena_cli("evaluator.train", "submit", "--url", url, "--token-file", token, "--journal", journal,
                                 "--candidate", cand, "--measurement", measurement, "--dataset", dataset_id,
@@ -187,13 +277,33 @@ class Acceptance:
         return json.loads(out)
 
     def wait(self, url, token, output, evaluation_id=None) -> tuple[int, dict]:
+        """Wait for an evaluation with the arena client; return (client exit code, final status).
+
+        The status is the JSON the client wrote to `output`, or {} if it wrote none. Pass the
+        `evaluation_id` returned by a public submit; a private evaluator needs none.
+        """
         extra = ["--evaluation-id", evaluation_id] if evaluation_id else []
         code, out = self.arena_cli("evaluator.client", "wait", "--url", url, "--token-file", token, *extra,
                                    "--poll-seconds", "2", "--output", output, ok=False)
         return code, (json.loads(Path(output).read_text()) if Path(output).exists() else {})
 
     def private_campaign(self, name, metric, finalists_ids, ways, max_solutions, extra_env=None) -> dict:
-        """Separate private instance: own journal with `max_solutions` proposals, K = len(finalists_ids)."""
+        """Run a whole private series in its own evaluator and journal; return its outcome (A17, A18).
+
+        Initialises a journal with `max_solutions` places, starts the private evaluator `name` with
+        K = len(finalists_ids), proposes the finalists (the first as the root, the rest as its
+        children), then packs, finalizes, submits the bundle and waits for the series.
+
+        Args:
+            metric: the frozen metric package.
+            ways: candidate directories by id, from `candidates`.
+            extra_env: evaluator settings to add, such as unreachable engine ports for an outage.
+
+        Returns:
+            wait_exit and api: the client's exit code and the status it saw; status, winners,
+            scores as (candidate id, score) pairs and failure: from the operator's record.json
+            (None, and no scores, when it is missing).
+        """
         srv = self.work / "srv" / name
         (srv / "search").mkdir(parents=True, exist_ok=True)
         (srv / "search-control").mkdir(parents=True, exist_ok=True)
@@ -223,6 +333,12 @@ class Acceptance:
                 "failure": rec.get("failure")}
 
     def pack(self, tag, journal, ids) -> Path:
+        """Pack the journal's snapshots of candidates `ids` into a bundle file and return its path.
+
+        Each candidate is restored from the journal into <work>/frozen/<tag>/<id> (once per tag),
+        so the bundle holds what the journal recorded, not the working copy. The bundle is
+        written to <work>/bundles/<tag>-<ids>.json, the ids joined with "-".
+        """
         frozen = self.work / "frozen" / tag
         args = []
         for cid in ids:
@@ -238,6 +354,14 @@ class Acceptance:
 
     # ------------------------------------------------------------------ scenario
     def run(self) -> int:
+        """Perform the whole acceptance and return the exit code: 0 if every check passed, else 1.
+
+        Checks in order: the readiness gate (A01-A03), the proposal limit (A04), train measurements
+        of the four candidates (A05-A08), public (A09), private admission and series (A10-A15), a
+        private restart (A16), a crashing finalist and an engine outage in separate private series
+        (A17-A18), and the journal afterwards (A19). Raises SystemExit if the work directory is not
+        empty.
+        """
         if self.work.exists() and any(self.work.iterdir()):
             raise SystemExit(f"{self.work} must be new or empty")
         (self.work / "logs").mkdir(parents=True, exist_ok=True)
@@ -384,6 +508,7 @@ class Acceptance:
 
 
 def main() -> int:
+    """Parse the command line, run the acceptance and return its exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--arena", required=True, help="pinned arena checkout with .venv")
     p.add_argument("--work", required=True, help="new empty directory for this acceptance run")
