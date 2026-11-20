@@ -77,6 +77,19 @@
 
 На VM 8.11 та же приемка прошла с настоящим Trino и обоими направлениями: 19/19 за 302 с ([отчет](../results/acceptance/vm-2026-11-08.json)). Полный train из 500 примеров через арену там же: кандидат со всеми верными переводами получает ровно 1.0 за 17 минут, baseline - 0.064 за 11 минут, как и без арены ([замер](../results/stand/full-train-2026-11-08.json)). Решатель в контейнере занимает ~0.6 с на пример.
 
+## Запуски
+
+Все запуски на одной VM (2 vCPU, 8 ГБ), арена закрепленной ревизии (SHA-256 в ADR 0001), команды оператора - `case/deploy/arena.sh <шаг>` из `case/deploy/README.md`.
+
+| Запуск | Дата | Что и команда | Идентификаторы | Результат и затраты |
+|---|---|---|---|---|
+| Генеральная репетиция | 8.11 | `case/researcher/rehearsal.sh` в `/srv/sqltr-rehearsal`, фальшивый провайдер | CAMPAIGN_ID `sqltr-rehearsal`, порты 18091-18094 | 22/22; денег не тратит ([отчет](../results/researcher/rehearsal-2026-11-08.json)) |
+| Первый настоящий вызов | 20.11 | `real_check.py` через шлюз репетиционного корня | - | 8/8, кэш промптов работает, $0.002 ([отчет](../results/researcher/real-check-2026-11-20.json)) |
+| Капнутый тест исследователя | 20.11 | `arena.sh researcher --effort medium`, корень `/srv/sqltr-rehearsal`, MAX_SOLUTIONS=2, кап $2 | CAMPAIGN_ID `sqltr-rehearsal` | сам завершил поиск: 2 кандидата за $0.076, 169 МБ ([отчет](../results/researcher/capped-test-2026-11-20.json)) |
+| Кампания `sqltr-c1` | 20.11 → | `arena.sh layout → image → accept → freeze → data → journal → workspace → start → readiness → gateway → researcher --effort medium`, корень `/srv/sqltr-arena` | RELEASE `sqltr-c1-metric-v2-runner-1`, CONDITIONS `sqltr-metric-v2-runner-1`, DATASET `train-20261101-250`, metric.lock `592692…973`, образ `sqltr-runner:1` digest `bd49d96e…`, лимит 50, K=5, N=3, шлюз Haiku 5.5 Medium, кап $4 | идет: интерим-сводка и кривая - [results/campaign/](../results/campaign/), разбор - [evolution.md](evolution.md) |
+
+Новый запуск той же кампании - продолжение того же журнала (`arena.sh stop`/`start` + повторный `researcher`); новая кампания - новый ROOT и идентификаторы. Стоимость кандидата ~$0.04 (модель) + ~11 мин полного train; ожидаемая стоимость всей кампании ~$2 при лимите 50.
+
 ## Отличия от арены
 
 Свой харнес `sqltr-program` (ADR 0008) - это штатное расширение арены: оператор регистрирует сторонний образ до кампании. Образ исследователя с Hermes и шлюз модели тоже свои (ADR 0007, `case/researcher`): арена оставляет эту часть оператору, а ее `evaluator.gateway` рассчитан на вызовы решателя. Других отличий нет. Если сработает запасной путь (кампания по своей методологии, B-0.2), отличия будут перечислены здесь и в отдельном ADR.

@@ -1,0 +1,137 @@
+{
+ "date": "2026-11-20T11:38Z",
+ "campaign_id": "sqltr-c1",
+ "note": "interim snapshot while the search is running; final numbers appear after finalization",
+ "conditions": {
+  "release": "sqltr-c1-metric-v2-runner-1",
+  "conditions": "sqltr-metric-v2-runner-1",
+  "dataset": "train-20261101-250",
+  "metric_lock_sha256": "592692149f1bcf55e8af5c52a1246476d66557a8c9fa339503aa005c52289f73"
+ },
+ "proposed": 15,
+ "max_solutions": 50,
+ "completed_measurements": 28,
+ "best_score": 0.706,
+ "auc_over_50": 0.1415,
+ "researcher": {
+  "model": "claude-haiku-5-5",
+  "effort": "medium",
+  "calls": 262,
+  "spent_usd": 0.6164,
+  "usd_per_proposed": 0.0411
+ },
+ "curve": [
+  {
+   "proposal": 1,
+   "candidate": "baseline",
+   "score": 0.064,
+   "best_so_far": 0.064,
+   "seconds": 682,
+   "quick_score": null
+  },
+  {
+   "proposal": 2,
+   "candidate": "cand-02",
+   "score": 0.366,
+   "best_so_far": 0.366,
+   "seconds": 613,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 3,
+   "candidate": "cand-03",
+   "score": 0.382,
+   "best_so_far": 0.382,
+   "seconds": 646,
+   "quick_score": 0.0
+  },
+  {
+   "proposal": 4,
+   "candidate": "cand-04",
+   "score": 0.45,
+   "best_so_far": 0.45,
+   "seconds": 738,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 5,
+   "candidate": "cand-05",
+   "score": 0.458,
+   "best_so_far": 0.458,
+   "seconds": 652,
+   "quick_score": 0.0
+  },
+  {
+   "proposal": 6,
+   "candidate": "cand-06",
+   "score": 0.518,
+   "best_so_far": 0.518,
+   "seconds": 648,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 7,
+   "candidate": "cand-07",
+   "score": 0.518,
+   "best_so_far": 0.518,
+   "seconds": 600,
+   "quick_score": 0.0
+  },
+  {
+   "proposal": 8,
+   "candidate": "cand-08",
+   "score": 0.532,
+   "best_so_far": 0.532,
+   "seconds": 605,
+   "quick_score": 0.0
+  },
+  {
+   "proposal": 9,
+   "candidate": "cand-09",
+   "score": 0.56,
+   "best_so_far": 0.56,
+   "seconds": 626,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 10,
+   "candidate": "cand-10",
+   "score": 0.572,
+   "best_so_far": 0.572,
+   "seconds": 687,
+   "quick_score": 0.0
+  },
+  {
+   "proposal": 11,
+   "candidate": "cand-11",
+   "score": 0.604,
+   "best_so_far": 0.604,
+   "seconds": 743,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 12,
+   "candidate": "cand-12",
+   "score": 0.646,
+   "best_so_far": 0.646,
+   "seconds": 691,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 13,
+   "candidate": "cand-13",
+   "score": 0.698,
+   "best_so_far": 0.698,
+   "seconds": 695,
+   "quick_score": 1.0
+  },
+  {
+   "proposal": 14,
+   "candidate": "cand-14",
+   "score": 0.706,
+   "best_so_far": 0.706,
+   "seconds": 697,
+   "quick_score": 1.0
+  }
+ ]
+}
