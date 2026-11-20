@@ -86,16 +86,17 @@ cmd_freeze() {
 
 # build public/private from $SEEDS_FILE (references on Trino), copy all three splits to $ROOT/data, print sha256s
 cmd_data() {
-  local seeds=$SEEDS_FILE sq=("$SQLTR_DIR/.venv/bin/python" -m sqltr --local)
+  local seeds=$SEEDS_FILE train_dir="${TRAIN_DIR:-data/train}" \
+    sq=("$SQLTR_DIR/.venv/bin/python" -m sqltr --local)
   [ -f "$seeds" ] || { echo "missing $seeds (operator seeds, see README: never in git)"; exit 1; }
   cd "$SQLTR_DIR"
-  [ -f data/train/dataset.jsonl ] || { echo "run stand/bootstrap.sh first (builds train)"; exit 1; }
+  [ -f "$train_dir/dataset.jsonl" ] || { echo "missing $train_dir/dataset.jsonl (build the train split first)"; exit 1; }
   "${sq[@]}" build-dataset --split public --families "${PUBLIC_FAMILIES:-100}" --seed-file "$seeds" \
-    --exclude data/train/instances.jsonl --out "$ROOT/data/public-build"
+    --exclude "$train_dir/instances.jsonl" --out "$ROOT/data/public-build"
   "${sq[@]}" build-dataset --split private --families "${PRIVATE_FAMILIES:-100}" --seed-file "$seeds" \
-    --exclude data/train/instances.jsonl "$ROOT/data/public-build/instances.jsonl" --out "$ROOT/data/private-build"
+    --exclude "$train_dir/instances.jsonl" "$ROOT/data/public-build/instances.jsonl" --out "$ROOT/data/private-build"
   for s in public private; do "${sq[@]}" build-references --split-dir "$ROOT/data/$s-build" --trino; done
-  cp data/train/dataset.jsonl "$ROOT/data/train/dataset.jsonl"
+  cp "$train_dir/dataset.jsonl" "$ROOT/data/train/dataset.jsonl"
   for s in public private; do cp "$ROOT/data/$s-build/dataset.jsonl" "$ROOT/data/$s/dataset.jsonl"; done
   chown -R "$SERVICE_USER" "$ROOT/data"; chmod -R go-rwx "$ROOT/data"
   sha256sum "$ROOT"/data/{train,public,private}/dataset.jsonl
