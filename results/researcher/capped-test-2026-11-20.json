@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-20",
+  "provider": "real Anthropic API, Claude Haiku 5.5 through case/researcher/gateway.py",
+  "root": "/srv/sqltr-rehearsal (capped test, not the campaign)",
+  "settings": "effort medium, MODEL_MAX_USD 2, MAX_SOLUTIONS 2, gateway port 18094",
+  "outcome": "the researcher finished by itself in one agent turn (00:16-00:46 UTC): 2 candidates, 3 full train measurements, exit 0",
+  "candidates": [
+    {"id": "baseline", "parents": [], "train_score": 0.064, "gp2trino": 0.012, "trino2gp": 0.116},
+    {"id": "gp-ddl-strip", "parents": ["baseline"], "train_score": 0.196, "gp2trino": 0.276, "trino2gp": 0.116,
+     "change": "strip Greenplum CREATE TABLE clauses (WITH (...), DISTRIBUTED, PARTITION BY) before SQLGlot in gp2trino"}
+  ],
+  "cost": {
+    "successful_run_usd": 0.0759,
+    "calls": 40,
+    "input_tokens": 1709988,
+    "output_tokens": 46950,
+    "cache_write_tokens": 268947,
+    "max_output_one_call": 11668,
+    "long_prompt_calls": 0,
+    "usd_per_candidate": 0.038,
+    "projected_50_candidates_usd": 1.9
+  },
+  "researcher_memory_peak_mib": 169,
+  "max_effort_probe": {
+    "minutes": 24,
+    "usd": 0.1576,
+    "calls": 10,
+    "max_output_one_call": 128000,
+    "finding": "compaction summaries of 22-128k output tokens per call, the agent never finished a turn; effort changed to medium (ADR 0007)"
+  },
+  "balance_after_usd": 5.87,
+  "note": "candidates and hints from this test stay out of the campaign; the journal is in the rehearsal root"
+}

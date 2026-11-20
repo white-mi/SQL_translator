@@ -1,0 +1,108 @@
+{
+  "model": "claude-haiku-5-5",
+  "results": {
+    "plain_without_betas": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 18,
+      "output": 4,
+      "cache_read": 0,
+      "cache_write": 0,
+      "error": ""
+    },
+    "plain_with_hermes_betas": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 18,
+      "output": 4,
+      "cache_read": 0,
+      "cache_write": 0,
+      "error": ""
+    },
+    "tool_call_at_effort_max": {
+      "status": 200,
+      "stop_reason": "tool_use",
+      "blocks": [
+        "tool_use"
+      ],
+      "input": 402,
+      "output": 53,
+      "cache_read": 0,
+      "cache_write": 0,
+      "error": ""
+    },
+    "tool_loop_with_thinking": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 462,
+      "output": 4,
+      "cache_read": 0,
+      "cache_write": 0,
+      "error": ""
+    },
+    "tool_loop_without_thinking": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 462,
+      "output": 4,
+      "cache_read": 0,
+      "cache_write": 0,
+      "error": ""
+    },
+    "edited_history_with_thinking": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 468,
+      "output": 4,
+      "cache_read": 0,
+      "cache_write": 0,
+      "error": ""
+    },
+    "cache_first_call": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 16,
+      "output": 5,
+      "cache_read": 0,
+      "cache_write": 12617,
+      "error": ""
+    },
+    "cache_second_call": {
+      "status": 200,
+      "stop_reason": "end_turn",
+      "blocks": [
+        "text"
+      ],
+      "input": 16,
+      "output": 4,
+      "cache_read": 12617,
+      "cache_write": 0,
+      "error": ""
+    }
+  },
+  "gateway": {
+    "model": "claude-haiku-5-5",
+    "spent_usd": 0.00193,
+    "cap_usd": 1.0,
+    "calls": 8,
+    "calls_without_usage": 0
+  }
+}

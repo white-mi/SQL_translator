@@ -98,6 +98,8 @@
 | `acceptance/vm-2026-11-08.json` | Приемка на VM с Trino: 19 из 19 за 302 с |
 | `acceptance/local-2026-11-04.json` | Приемка в песочнице, только PostgreSQL: 19 из 19 |
 | `researcher/rehearsal-2026-11-08.json` | Генеральная репетиция: 22 из 22 |
+| `researcher/real-check-2026-11-20.json` | Первый настоящий вызов модели через шлюз: 8 из 8, кэш работает |
+| `researcher/capped-test-2026-11-20.json` | Капнутый тест исследователя на настоящей Haiku 5.5: 2 кандидата за $0.076, выбор усилия Medium |
 | `poc/poc-2026-11-08.json` **[только оператор]** | Числа пробы вне кампании: кандидаты, score, токены, стоимость |
 | `archive/2026-11-04-local/baseline-gp2trino-offline.json` | Архив 4.11: офлайн-оценка gp2trino без Trino, верхняя граница 0.024; настоящий замер дал 0.012 |
 | `archive/2026-11-04-local/baseline-trino2gp-summary.json` | Архив 4.11: trino2gp только на PostgreSQL, 0.116; настоящий замер дал то же |
