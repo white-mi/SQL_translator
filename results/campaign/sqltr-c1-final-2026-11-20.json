@@ -1,0 +1,296 @@
+{
+ "campaign_id": "sqltr-c1",
+ "finished": "2026-11-20T22:25Z",
+ "release": "sqltr-c1-metric-v2-runner-1",
+ "metric_lock_sha256": "592692149f1bcf55e8af5c52a1246476d66557a8c9fa339503aa005c52289f73",
+ "story": "started 2026-11-20 08:06 UTC; the researcher reached 1.0 on the full train at proposal 30 and then proposed nothing new; the operator stopped the search (journal stop + search-control/stop.json with source_ref), finalized the top-5 train finalists; public and private were evaluated by the arena; the operator measured baseline on private and the winners on the holdout",
+ "proposals": {
+  "used": 30,
+  "limit": 50,
+  "stop_reason": "perfect-score plateau at proposal 30"
+ },
+ "winners": [
+  "cand-30",
+  "cand-29",
+  "cand-27"
+ ],
+ "scores": {
+  "train": {
+   "baseline": 0.064,
+   "cand-02": 0.366,
+   "cand-03": 0.382,
+   "cand-04": 0.45,
+   "cand-05": 0.458,
+   "cand-06": 0.518,
+   "cand-07": 0.518,
+   "cand-08": 0.532,
+   "cand-09": 0.56,
+   "cand-10": 0.572,
+   "cand-11": 0.604,
+   "cand-12": 0.646,
+   "cand-13": 0.698,
+   "cand-14": 0.706,
+   "cand-15": 0.706,
+   "cand-16": 0.72,
+   "cand-17": 0.758,
+   "cand-18": 0.758,
+   "cand-19": 0.784,
+   "cand-20": 0.784,
+   "cand-21": 0.808,
+   "cand-22": 0.808,
+   "cand-23": 0.85,
+   "cand-24": 0.892,
+   "cand-25": 0.916,
+   "cand-26": 0.924,
+   "cand-27": 0.946,
+   "cand-28": 0.946,
+   "cand-29": 0.968,
+   "cand-30": 1.0
+  },
+  "public": {
+   "cand-30": 1.0,
+   "cand-29": 0.985,
+   "cand-28": 0.975,
+   "cand-27": 0.975,
+   "cand-26": 0.965
+  },
+  "private": {
+   "cand-30": 1.0,
+   "cand-29": 0.965,
+   "cand-28": 0.955,
+   "cand-27": 0.955,
+   "cand-26": 0.945
+  },
+  "holdout_winners": {
+   "cand-30": 0.75,
+   "cand-29": 0.75,
+   "cand-27": 0.75
+  },
+  "baseline": {
+   "train": 0.064,
+   "private": 0.06,
+   "holdout": 0.042
+  }
+ },
+ "auc_over_50": 0.4128,
+ "tie_break": "cand-27 over cand-28 at private 0.955 by solver seconds 121.0 vs 126.9",
+ "researcher": {
+  "model": "claude-haiku-5-5",
+  "effort": "medium",
+  "calls": 559,
+  "spent_usd": 1.43,
+  "usd_per_candidate": 0.048
+ },
+ "curve": [
+  {
+   "proposal": 1,
+   "candidate": "baseline",
+   "score": 0.064,
+   "best_so_far": 0.064,
+   "seconds": 682
+  },
+  {
+   "proposal": 2,
+   "candidate": "cand-02",
+   "score": 0.366,
+   "best_so_far": 0.366,
+   "seconds": 613
+  },
+  {
+   "proposal": 3,
+   "candidate": "cand-03",
+   "score": 0.382,
+   "best_so_far": 0.382,
+   "seconds": 646
+  },
+  {
+   "proposal": 4,
+   "candidate": "cand-04",
+   "score": 0.45,
+   "best_so_far": 0.45,
+   "seconds": 738
+  },
+  {
+   "proposal": 5,
+   "candidate": "cand-05",
+   "score": 0.458,
+   "best_so_far": 0.458,
+   "seconds": 652
+  },
+  {
+   "proposal": 6,
+   "candidate": "cand-06",
+   "score": 0.518,
+   "best_so_far": 0.518,
+   "seconds": 648
+  },
+  {
+   "proposal": 7,
+   "candidate": "cand-07",
+   "score": 0.518,
+   "best_so_far": 0.518,
+   "seconds": 600
+  },
+  {
+   "proposal": 8,
+   "candidate": "cand-08",
+   "score": 0.532,
+   "best_so_far": 0.532,
+   "seconds": 605
+  },
+  {
+   "proposal": 9,
+   "candidate": "cand-09",
+   "score": 0.56,
+   "best_so_far": 0.56,
+   "seconds": 626
+  },
+  {
+   "proposal": 10,
+   "candidate": "cand-10",
+   "score": 0.572,
+   "best_so_far": 0.572,
+   "seconds": 687
+  },
+  {
+   "proposal": 11,
+   "candidate": "cand-11",
+   "score": 0.604,
+   "best_so_far": 0.604,
+   "seconds": 743
+  },
+  {
+   "proposal": 12,
+   "candidate": "cand-12",
+   "score": 0.646,
+   "best_so_far": 0.646,
+   "seconds": 691
+  },
+  {
+   "proposal": 13,
+   "candidate": "cand-13",
+   "score": 0.698,
+   "best_so_far": 0.698,
+   "seconds": 695
+  },
+  {
+   "proposal": 14,
+   "candidate": "cand-14",
+   "score": 0.706,
+   "best_so_far": 0.706,
+   "seconds": 697
+  },
+  {
+   "proposal": 15,
+   "candidate": "cand-15",
+   "score": 0.706,
+   "best_so_far": 0.706,
+   "seconds": 655
+  },
+  {
+   "proposal": 16,
+   "candidate": "cand-16",
+   "score": 0.72,
+   "best_so_far": 0.72,
+   "seconds": 658
+  },
+  {
+   "proposal": 17,
+   "candidate": "cand-17",
+   "score": 0.758,
+   "best_so_far": 0.758,
+   "seconds": 731
+  },
+  {
+   "proposal": 18,
+   "candidate": "cand-18",
+   "score": 0.758,
+   "best_so_far": 0.758,
+   "seconds": 712
+  },
+  {
+   "proposal": 19,
+   "candidate": "cand-19",
+   "score": 0.784,
+   "best_so_far": 0.784,
+   "seconds": 649
+  },
+  {
+   "proposal": 20,
+   "candidate": "cand-20",
+   "score": 0.784,
+   "best_so_far": 0.784,
+   "seconds": 730
+  },
+  {
+   "proposal": 21,
+   "candidate": "cand-21",
+   "score": 0.808,
+   "best_so_far": 0.808,
+   "seconds": 709
+  },
+  {
+   "proposal": 22,
+   "candidate": "cand-22",
+   "score": 0.808,
+   "best_so_far": 0.808,
+   "seconds": 953
+  },
+  {
+   "proposal": 23,
+   "candidate": "cand-23",
+   "score": 0.85,
+   "best_so_far": 0.85,
+   "seconds": 686
+  },
+  {
+   "proposal": 24,
+   "candidate": "cand-24",
+   "score": 0.892,
+   "best_so_far": 0.892,
+   "seconds": 706
+  },
+  {
+   "proposal": 25,
+   "candidate": "cand-25",
+   "score": 0.916,
+   "best_so_far": 0.916,
+   "seconds": 706
+  },
+  {
+   "proposal": 26,
+   "candidate": "cand-26",
+   "score": 0.924,
+   "best_so_far": 0.924,
+   "seconds": 707
+  },
+  {
+   "proposal": 27,
+   "candidate": "cand-27",
+   "score": 0.946,
+   "best_so_far": 0.946,
+   "seconds": 707
+  },
+  {
+   "proposal": 28,
+   "candidate": "cand-28",
+   "score": 0.946,
+   "best_so_far": 0.946,
+   "seconds": 821
+  },
+  {
+   "proposal": 29,
+   "candidate": "cand-29",
+   "score": 0.968,
+   "best_so_far": 0.968,
+   "seconds": 706
+  },
+  {
+   "proposal": 30,
+   "candidate": "cand-30",
+   "score": 1.0,
+   "best_so_far": 1.0,
+   "seconds": 707
+  }
+ ]
+}

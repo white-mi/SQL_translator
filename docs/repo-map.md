@@ -103,6 +103,7 @@
 | `researcher/real-check-2026-11-20.json` | Первый настоящий вызов модели через шлюз: 8 из 8, кэш работает |
 | `researcher/capped-test-2026-11-20.json` | Капнутый тест исследователя на настоящей Haiku 5.5: 2 кандидата за $0.076, выбор усилия Medium |
 | `campaign/sqltr-c1-interim-2026-11-20.json` | Интерим кампании `sqltr-c1`: кривая train по предложениям, AUC, стоимость исследователя |
+| `campaign/sqltr-c1-final-2026-11-20.json` | Итог кампании `sqltr-c1`: победители, train/public/private/holdout, AUC, тай-брейк, расходы |
 | `poc/poc-2026-11-08.json` **[только оператор]** | Числа пробы вне кампании: кандидаты, score, токены, стоимость |
 | `archive/2026-11-04-local/baseline-gp2trino-offline.json` | Архив 4.11: офлайн-оценка gp2trino без Trino, верхняя граница 0.024; настоящий замер дал 0.012 |
 | `archive/2026-11-04-local/baseline-trino2gp-summary.json` | Архив 4.11: trino2gp только на PostgreSQL, 0.116; настоящий замер дал то же |
