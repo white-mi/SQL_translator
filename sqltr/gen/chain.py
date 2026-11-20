@@ -28,7 +28,8 @@ class Desc:
     """Output contract of one pool member: columns the linker may rely on.
 
     Attributes:
-        key: Join key of the pool, always in the output.
+        key: The member's own join-key column, always in the output (cohorts calls it
+            `cohort_month` where the month pool aliases it to `month_start`).
         num: Always-present numeric column, or None.
         num2: Second numeric column, or None.
         text: Always-present text column safe for aggregation and regex, or None.
@@ -58,10 +59,12 @@ CUSTOMER = {
 }
 MONTH = {
     "category_monthly": Desc("month_start", num="revenue", text="month_label"),
-    "cohorts": Desc("month_start", num="active_customers"),
+    "cohorts": Desc("cohort_month", num="active_customers"),
     "fact": Desc("month_start", num="revenue", text="channel", last=True),
 }
 POOLS = {"store": STORE, "customer": CUSTOMER, "month": MONTH}
+# The key column the linker exposes in the chain table; members join through their own Desc.key.
+POOL_KEY = {"store": "store_id", "customer": "customer_id", "month": "month_start"}
 
 # Member options the composite pins for contract stability: fact only exposes sales_monthly with
 # the rollup on, so the month pool forces it after sampling.
@@ -114,13 +117,14 @@ def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
         knobs. Every construct goes through `R` methods, so both dialects stay equivalent.
         """
         descs = POOLS[pool]
+        alias = POOL_KEY[pool]
         script_a, out_a = _member(p["a"], pool).render(p["pa"], x)
         script_b, out_b = _member(p["b"], pool).render(p["pb"], x)
         da, db = descs[p["a"]], descs[p["b"]]
         ta = _table(out_a[-1] if da.last else out_a[0], x)
         tb = _table(out_b[-1] if db.last else out_b[0], x)
         link = x.t("wrk", f"chain_{pool}")
-        cols, group = [f"a.{da.key} AS {da.key}"], ["1"]
+        cols, group = [f"a.{da.key} AS {alias}"], ["1"]
         if da.date and p["dow"]:
             cols.append(f"{x.dow('a.' + da.date)} AS link_dow")
             group.append(str(len(group) + 1))
@@ -145,7 +149,7 @@ def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
             agg = (f"SELECT b.{db.key} AS {db.key}, round({x.cast('sum(b.' + db.num + ')', 'numeric')}, 2) AS b_total\n"
                    f"FROM {tb} b GROUP BY 1")
             create_tmp, tmp, drop_tmp = x.temp_table(f"chain_src_{pool}", agg, dist=db.key)
-            update = x.update_from(link, "c", tmp, "t", f"c.{da.key} = t.{db.key}", [("sum_b", "t.b_total")])
+            update = x.update_from(link, "c", tmp, "t", f"c.{alias} = t.{db.key}", [("sum_b", "t.b_total")])
             parts += [create_tmp, update, drop_tmp]
         elif p["update"] and sum_a:
             parts.append(x.analyze(link))
