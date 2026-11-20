@@ -53,3 +53,32 @@ def test_greenplum_renderings_execute_on_all_states(pg_cfg):
         runs = run_on_states(script, "gp", outputs, pg_cfg)
         assert all(run.ok for run in runs), (template.name, [(x.state, x.error) for x in runs if not x.ok])
         assert all(h is not None for run in runs for h in run.hashes.values()), template.name
+
+
+def test_chain_scripts_cross_reference_member_outputs():
+    """A composite script carries both member scripts and the linker over their outputs."""
+    r = random.Random(7)
+    for template in [t for t in TEMPLATES if t.name.startswith("chain_")]:
+        params, style = template.sample(r), sample_style(r)
+        gp = render(template.name, params, "gp", style)
+        trino = render(template.name, params, "trino", style)
+        assert gp[1] == trino[1] and len(gp[1]) >= 3  # two members plus the linker table
+        for output in gp[1]:
+            assert output.split(".", 1)[1] in gp[0], (template.name, output)
+        assert gp[0].count(";") >= 3  # several statements, not a single-select script
+        assert params["a"] != params["b"]
+
+
+def test_chain_families_are_deterministic_and_distinct():
+    """Composite draws are reproducible and never chain a template with itself."""
+    from sqltr.gen.chain import STORE
+    sampler = next(t for t in TEMPLATES if t.name == "chain_store")
+    r = random.Random(11)
+    ids = set()
+    for _ in range(50):
+        params = sampler.sample(r)
+        assert params["a"] in STORE and params["b"] in STORE and params["a"] != params["b"]
+        ids.add(family_id(sampler.name, params))
+    assert len(ids) == 50
+    replay = sampler.sample(random.Random(11))
+    assert family_id(sampler.name, replay) in ids

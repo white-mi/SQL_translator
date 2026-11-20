@@ -546,6 +546,11 @@ TEMPLATES: list[Template] = [
     Template("loyalty", s_loyalty, r_loyalty),
     Template("contacts", s_contacts, r_contacts),
 ]
+# Composite templates of campaign v2: two member scripts plus a linker over their outputs
+# (sqltr/gen/chain.py). They are ordinary templates to the rest of the pipeline.
+from .chain import COMPOSITE  # noqa: E402 - appended after the member definitions on purpose
+
+TEMPLATES += COMPOSITE
 BY_NAME = {t.name: t for t in TEMPLATES}
 
 
