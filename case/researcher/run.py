@@ -1,8 +1,10 @@
 """Researcher loop inside the container: Hermes works until the journal says the search is over.
 
 An agent may end its turn while the search is unfinished, so after every turn the loop asks the journal
-how far the search is and, if it is not over, sends the agent back to work. Two turns in a row without
-any change in the journal end the run with an error: that would spend money and move nothing.
+how far the search is and, if it is not over, sends the agent back to work. Several turns in a row
+without any change in the journal end the run with an error: that would spend money and move nothing.
+The limit is --max-idle-turns (default 5), high enough for a researcher that studies the case before
+its first proposal and low enough to stop an agent that only ends turns.
 
 The container holds only a token for the model gateway. The provider key stays with the gateway.
 
@@ -14,8 +16,8 @@ which sets SQLTR_MODEL_URL, ARENA_MODEL_NAME and ARENA_SEARCH_JOURNAL (`arena.sh
 and mounts the gateway token at /run/secrets/model-token. The loop writes Hermes's config.yaml,
 which holds the token, to $HERMES_HOME; prints one JSON line per turn; and with --transcript
 rewrites the conversation as JSONL after every turn. Exit codes: 0 the search is finished,
-2 the agent failed or did not complete its turn, 3 two turns without any change in the journal,
-4 the agent returned no conversation history.
+2 the agent failed or did not complete its turn, 3 --max-idle-turns turns without any change in the
+journal, 4 the agent returned no conversation history.
 """
 
 from __future__ import annotations
@@ -107,6 +109,8 @@ def main() -> int:
     parser.add_argument("--token-file", type=Path, default=Path("/run/secrets/model-token"))
     parser.add_argument("--api-mode", default="anthropic_messages")
     parser.add_argument("--effort", default="max")
+    parser.add_argument("--max-idle-turns", type=int, default=5,
+                        help="stop after this many turns in a row without any change in the journal")
     parser.add_argument("--cwd", default="/workspace")
     parser.add_argument("--toolsets", default=",".join(TOOLSETS))
     parser.add_argument("--stop-at-limit", action="store_true",
@@ -156,8 +160,9 @@ def main() -> int:
                 print((result.get("final_response") or "")[:2000], flush=True)
                 return 0
             idle_turns = idle_turns + 1 if status == previous else 0
-            if idle_turns >= 2:
-                print("two turns without any change in the journal; stopping", file=sys.stderr, flush=True)
+            if idle_turns >= args.max_idle_turns:
+                print(f"{args.max_idle_turns} turns without any change in the journal; stopping",
+                      file=sys.stderr, flush=True)
                 return 3
             if not history:
                 print("the agent returned no conversation history", file=sys.stderr, flush=True)
