@@ -104,6 +104,16 @@ def _table(logical: str, x: R) -> str:
     return x.t(schema, table)
 
 
+def _dec(x: R, expr: str) -> str:
+    """Cast a numeric aggregate to an exact two-decimal type in the dialect of `x`.
+
+    `R.cast(expr, "numeric")` maps to bare DECIMAL in Trino, which is DECIMAL(38,0): an
+    INTEGER type that truncates monetary sums (the 38-family self-check divergence).
+    PostgreSQL keeps numeric; Trino gets DECIMAL(38,2), so both engines hold the same value.
+    """
+    return f"CAST({expr} AS numeric)" if x.gp else f"CAST({expr} AS DECIMAL(38,2))"
+
+
 def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
     """Return the renderer of one pool's composite template."""
 
@@ -128,8 +138,8 @@ def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
         if da.date and p["dow"]:
             cols.append(f"{x.dow('a.' + da.date)} AS link_dow")
             group.append(str(len(group) + 1))
-        sum_a = f"round({x.cast('sum(a.' + da.num + ')', 'numeric')}, 2)" if da.num else None
-        sum_b = f"round({x.cast('sum(b.' + db.num + ')', 'numeric')}, 2)" if db.num else None
+        sum_a = f"round({_dec(x, f'sum(a.{da.num})')}, 2)" if da.num else None
+        sum_b = f"round({_dec(x, f'sum(b.{db.num})')}, 2)" if db.num else None
         if sum_a:
             cols.append(f"{sum_a} AS sum_a")
         if sum_b:
@@ -138,7 +148,7 @@ def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
             # exact decimal division in both engines: DOUBLE arithmetic in Trino rounds
             # differently from PostgreSQL numeric at the 4th decimal (38/250 families diverged)
             x.f("division")
-            num_dec, den_dec = x.cast(f"sum(a.{da.num})", "numeric"), x.cast(f"sum(b.{db.num})", "numeric")
+            num_dec, den_dec = _dec(x, f"sum(a.{da.num})"), _dec(x, f"sum(b.{db.num})")
             cols.append(f"round({num_dec} / NULLIF({den_dec}, 0), 2) AS share_b")
         if db.text and p["labels"]:
             cols.append(f"{x.agg_join('b.' + db.text, '|')} AS b_texts")
@@ -150,7 +160,7 @@ def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
         parts = [script_a, script_b, x.comment(f"сводка цепочки {p['a']} + {p['b']}") + x.ctas(link, select)]
         outputs = out_a + out_b + [f"wrk.chain_{pool}"]
         if p["update"] and sum_b:
-            agg = (f"SELECT b.{db.key} AS {db.key}, round({x.cast('sum(b.' + db.num + ')', 'numeric')}, 2) AS b_total\n"
+            agg = (f"SELECT b.{db.key} AS {db.key}, round({_dec(x, f'sum(b.{db.num})')}, 2) AS b_total\n"
                    f"FROM {tb} b GROUP BY 1")
             create_tmp, tmp, drop_tmp = x.temp_table(f"chain_src_{pool}", agg, dist=db.key)
             update = x.update_from(link, "c", tmp, "t", f"c.{alias} = t.{db.key}", [("sum_b", "t.b_total")])
