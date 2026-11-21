@@ -159,3 +159,32 @@ def test_postgres_error_classification():
         assert _pg_error_kind(infra, False) == "infra", infra
     assert _pg_error_kind("", True) == "infra"
     assert _pg_error_kind("", False) == "sql_error"
+
+
+def test_blind_feedback_hides_the_failure_kind():
+    """With blind_feedback a failing answer reports only the score and a bare marker."""
+    from dataclasses import replace
+
+    from sqltr_metric.config import Config
+    from sqltr_metric.evaluate import score_answer
+
+    task, reference = {"direction": "trino2gp"}, {"target": "gp", "states": ["s1"], "outputs": {}}
+    rich = score_answer("t1", task, reference, "", Config())
+    assert rich.statistics["failure"] == "empty_answer"
+    blind = score_answer("t1", task, reference, "", replace(Config(), blind_feedback=True))
+    assert blind.score == 0.0
+    assert blind.statistics == {"direction": "trino2gp", "target": "gp",
+                                "metric_version": rich.statistics["metric_version"],
+                                "failure": {"kind": "blind"}}
+
+
+def test_blind_config_loads_from_the_file(tmp_path):
+    """metric_config.json's blind_feedback flag reaches the Config."""
+    import json
+
+    from sqltr_metric.config import load
+
+    path = tmp_path / "metric_config.json"
+    path.write_text(json.dumps({"blind_feedback": True}), encoding="utf-8")
+    assert load(path).blind_feedback is True
+    assert load(tmp_path / "missing.json").blind_feedback is False

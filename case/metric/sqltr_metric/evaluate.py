@@ -142,6 +142,23 @@ class Score:
 
 def score_answer(example_id: str, task: dict, reference: dict, answer: str, cfg: Config,
                  cache=None) -> Score:
+    """Score one answer, then apply the campaign's feedback policy.
+
+    Thin public wrapper over `_score_answer_rich`: with `cfg.blind_feedback` (ADR 0011) a
+    failing answer keeps its score but its statistics shrink to direction, target, metric
+    version and `{"failure": {"kind": "blind"}}` - no class, statement, state or table detail,
+    whichever check failed and whether the result came from the cache. Success keeps full
+    statistics (they leak nothing about failures).
+    """
+    result = _score_answer_rich(example_id, task, reference, answer, cfg, cache)
+    if cfg.blind_feedback and result.score == 0.0:
+        return Score(0.0, {k: result.statistics[k] for k in ("direction", "target", "metric_version")}
+                     | {"failure": {"kind": "blind"}})
+    return result
+
+
+def _score_answer_rich(example_id: str, task: dict, reference: dict, answer: str, cfg: Config,
+                       cache=None) -> Score:
     """Score one translated script: 1.0 if every output table matches on every state, else 0.0.
 
     Checks run in order; the first that fails gives 0 with its reason in statistics["failure"]:

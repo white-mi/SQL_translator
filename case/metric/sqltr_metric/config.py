@@ -65,6 +65,9 @@ class Config:
         statement_timeout_s: limit for one statement, set as the engine's session timeout.
         example_timeout_s: limit for one script over all states (evaluate.run_on_states).
         cache: whether score.py and run-local reuse scores from evaluate.PgCache.
+        blind_feedback: hide the failure classification and progress from statistics, keeping
+            only the score and a bare failure marker (the researcher must form hypotheses
+            without labeled errors; frozen per campaign through metric_config.json).
     """
 
     states: list[str] = field(default_factory=lambda: ["s1", "s2", "s3", "s4"])
@@ -73,6 +76,7 @@ class Config:
     statement_timeout_s: int = 30
     example_timeout_s: int = 240
     cache: bool = True
+    blind_feedback: bool = False
     postgres: PostgresConfig = field(default_factory=PostgresConfig)
     trino: TrinoConfig = field(default_factory=TrinoConfig)
 
@@ -123,6 +127,7 @@ def load(path: Path | None = None) -> Config:
         statement_timeout_s=data.get("statement_timeout_s", 30),
         example_timeout_s=data.get("example_timeout_s", 240),
         cache=data.get("cache", True),
+        blind_feedback=data.get("blind_feedback", False),
         postgres=pg,
         trino=tr,
     )

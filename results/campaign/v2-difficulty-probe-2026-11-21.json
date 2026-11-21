@@ -1,0 +1,43 @@
+{
+ "date": "2026-11-21",
+ "corpus": "750 families, seed 20261122 (fresh draw, composites ~46%)",
+ "note": "v2 difficulty probe: operator measurement on engines, no model; the composite world after the DECIMAL(38,2) fix",
+ "results": {
+  "cand-30": {
+   "score": 0.9314,
+   "gp2trino": 1.0,
+   "trino2gp": 0.8627,
+   "failures": {
+    "sql_error": 103
+   }
+  },
+  "cand-29": {
+   "score": 0.888,
+   "gp2trino": 0.9133,
+   "trino2gp": 0.8627,
+   "failures": {
+    "sql_error": 103,
+    "mismatch": 65
+   }
+  },
+  "cand-27": {
+   "score": 0.8686,
+   "gp2trino": 0.9133,
+   "trino2gp": 0.824,
+   "failures": {
+    "sql_error": 103,
+    "mismatch": 94
+   }
+  },
+  "baseline": {
+   "score": 0.0474,
+   "gp2trino": 0.008,
+   "trino2gp": 0.0867,
+   "failures": {
+    "sql_error": 1305,
+    "target_dialect_gate": 120,
+    "mismatch": 4
+   }
+  }
+ }
+}
