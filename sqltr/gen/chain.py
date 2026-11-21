@@ -135,7 +135,11 @@ def _render_chain(pool: str) -> Callable[[dict, R], tuple[str, list[str]]]:
         if sum_b:
             cols.append(f"{sum_b} AS sum_b")
         if sum_a and sum_b:
-            cols.append(f"{x.ratio(f'sum(a.{da.num})', f'sum(b.{db.num})')} AS share_b")
+            # exact decimal division in both engines: DOUBLE arithmetic in Trino rounds
+            # differently from PostgreSQL numeric at the 4th decimal (38/250 families diverged)
+            x.f("division")
+            num_dec, den_dec = x.cast(f"sum(a.{da.num})", "numeric"), x.cast(f"sum(b.{db.num})", "numeric")
+            cols.append(f"round({num_dec} / NULLIF({den_dec}, 0), 2) AS share_b")
         if db.text and p["labels"]:
             cols.append(f"{x.agg_join('b.' + db.text, '|')} AS b_texts")
         if db.text:
